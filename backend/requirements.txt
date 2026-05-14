@@ -1,0 +1,10 @@
+langgraph==0.2.50
+langchain==0.3.7
+langchain-ollama==0.2.1
+fastapi==0.115.5
+uvicorn==0.32.1
+python-multipart==0.0.17
+sqlalchemy==2.0.36
+pandas==2.2.3
+matplotlib==3.9.2
+websockets==13.1

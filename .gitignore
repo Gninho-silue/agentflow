@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+agentflow.db
+uploads/
+
+node_modules/
+dist/
+.vite/
+
+.env
+.env.local
+prompt.md
