@@ -24,6 +24,7 @@ async def task_websocket(websocket: WebSocket, task_id: str) -> None:
                 task = get_task_response(task_id)
             except Exception:
                 await websocket.send_json({"type": "error", "message": "Task not found."})
+                await websocket.close()
                 return
 
             events = TASK_EVENTS.get(task_id, [])
@@ -44,3 +45,10 @@ async def task_websocket(websocket: WebSocket, task_id: str) -> None:
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         return
+    except Exception as exc:
+        print(f"[WebSocket] Unhandled error for task {task_id}: {exc}")
+        try:
+            await websocket.send_json({"type": "error", "message": "Workflow failed."})
+            await websocket.close()
+        except Exception:
+            pass

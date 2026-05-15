@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -15,7 +16,7 @@ from backend.agents.reporter import ReporterAgent
 from backend.graph.state import AgentState
 
 
-LLM_MODEL = "llama3.2:1b"
+LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 
 def create_workflow() -> Any:

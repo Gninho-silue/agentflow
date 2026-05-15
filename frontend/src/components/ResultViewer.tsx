@@ -9,12 +9,23 @@ interface ResultViewerProps {
   task: TaskRecord | null;
 }
 
+/**
+ * Strip script/iframe tags and inline event handlers from LLM-generated report
+ * text before passing it to the markdown renderer.
+ */
+function sanitizeReport(raw: string): string {
+  return raw
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, "")
+    .replace(/\bon[a-z]{1,20}\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, "");
+}
+
 export function ResultViewer({ task }: ResultViewerProps): JSX.Element | null {
   if (!task || (!task.result && task.status !== "error")) {
     return null;
   }
 
-  const report = task?.result?.report ?? "";
+  const report = sanitizeReport(task?.result?.report ?? "");
   const metadata = [
     task.execution_time ? `${task.execution_time}s` : null,
     task.agents_used?.length ? task.agents_used.join(" → ") : null,
@@ -126,5 +137,11 @@ const markdownComponents: Components = {
         </code>
       </pre>
     );
+  },
+  // Only render img tags that point to our own uploads — block all other src values
+  img({ src, alt }) {
+    const safeSrc = typeof src === "string" && src.startsWith("/uploads/") ? src : undefined;
+    if (!safeSrc) return null;
+    return <img src={safeSrc} alt={alt ?? "Chart"} className="max-w-full rounded-lg" />;
   },
 };

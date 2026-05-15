@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -10,7 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from langchain_core.messages import BaseMessage, HumanMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,7 +21,10 @@ from backend.graph.workflow import workflow
 from backend.models.task import Task
 
 
-UPLOAD_DIR = Path("uploads")
+_ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".csv", ".json", ".txt"})
+_MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_FILE_SIZE_MB", "10")) * 1024 * 1024
+
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(prefix="/api")
@@ -30,8 +34,16 @@ TASK_EVENTS: dict[str, list[dict[str, Any]]] = {}
 class TaskCreateRequest(BaseModel):
     """Request body for creating a task."""
 
-    task: str = Field(min_length=1)
+    task: str = Field(min_length=1, max_length=2000)
     file_path: str | None = None
+
+    @field_validator("task")
+    @classmethod
+    def task_not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Task text must not be blank or whitespace only.")
+        return stripped
 
 
 class TaskCreateResponse(BaseModel):
@@ -113,14 +125,32 @@ async def get_task_status(task_id: str, db: Session = Depends(get_db)) -> TaskRe
 async def upload_file(file: UploadFile = File(...)) -> dict[str, str]:
     """Upload a file for a future AgentFlow task."""
 
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{suffix or '(none)'}' is not allowed. Upload a .csv, .json, or .txt file.",
+        )
+
+    contents = await file.read()
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB size limit.",
+        )
+
+    safe_filename = f"{uuid.uuid4()}{suffix}"
+    save_path = UPLOAD_DIR / safe_filename
+
+    # Path traversal protection — resolved path must stay inside UPLOAD_DIR
+    if not str(save_path.resolve()).startswith(str(UPLOAD_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid file path.")
+
     try:
-        safe_name = Path(file.filename or "upload").name
-        file_path = UPLOAD_DIR / f"{uuid.uuid4()}-{safe_name}"
-        contents = await file.read()
-        file_path.write_bytes(contents)
-        return {"file_path": str(file_path)}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        save_path.write_bytes(contents)
+        return {"file_path": str(save_path)}
+    except Exception:
+        raise HTTPException(status_code=500, detail="File upload failed.")
 
 
 @router.get("/tasks", response_model=list[TaskResponse])

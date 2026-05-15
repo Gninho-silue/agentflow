@@ -1,10 +1,16 @@
 """Matplotlib chart generation helpers for AgentFlow."""
 
+import re
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
+
+
+_ALLOWED_IMPORT_ROOTS: frozenset[str] = frozenset({"pandas", "matplotlib"})
+
+_UPLOAD_DIR = "uploads"
 
 
 def generate_chart_from_code(code: str, file_data: dict[str, object] | None, task_id: str) -> str | None:
@@ -13,8 +19,17 @@ def generate_chart_from_code(code: str, file_data: dict[str, object] | None, tas
     if "matplotlib" not in code and "plt." not in code:
         return None
 
-    os.makedirs("uploads", exist_ok=True)
-    chart_path = f"uploads/chart_{task_id}.png"
+    if _has_dangerous_imports(code):
+        print("Chart generation blocked: code contains disallowed import statements.")
+        return None
+
+    os.makedirs(_UPLOAD_DIR, exist_ok=True)
+    chart_path = f"{_UPLOAD_DIR}/chart_{task_id}.png"
+
+    # Validate chart_path stays inside the uploads directory
+    if not chart_path.startswith(f"{_UPLOAD_DIR}/"):
+        print(f"Chart generation blocked: path '{chart_path}' is outside uploads/.")
+        return None
 
     cleaned_code = _sanitize_code(code, chart_path)
 
@@ -32,6 +47,7 @@ def generate_chart_from_code(code: str, file_data: dict[str, object] | None, tas
             "file_data": file_data or {},
             "__builtins__": {
                 "__import__": _safe_import,
+                "abs": abs,
                 "print": print,
                 "range": range,
                 "len": len,
@@ -66,9 +82,18 @@ def generate_chart_from_code(code: str, file_data: dict[str, object] | None, tas
         return None
 
 
+def _has_dangerous_imports(code: str) -> bool:
+    """Return True when the code imports any module outside the allowed set."""
+
+    for match in re.finditer(r"^\s*(?:import|from)\s+([A-Za-z_]\w*)", code, re.MULTILINE):
+        root = match.group(1).split(".")[0]
+        if root not in _ALLOWED_IMPORT_ROOTS:
+            return True
+    return False
+
+
 def _sanitize_code(code: str, chart_path: str) -> str:
     """Remove markdown fences, strip whitespace, and inject savefig/close."""
-    import re
 
     cleaned = re.sub(r"^```(?:python)?\s*\n?", "", code.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"\n?```\s*$", "", cleaned.strip(), flags=re.MULTILINE)

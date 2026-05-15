@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, String, Text
+from sqlalchemy import JSON, DateTime, Float, Index, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -16,6 +16,7 @@ class Task(Base):
     """Persisted task execution record."""
 
     __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_status", "status"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task: Mapped[str] = mapped_column(Text, nullable=False)

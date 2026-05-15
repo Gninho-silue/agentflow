@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import re
 import uuid
 from typing import Any
@@ -11,6 +12,23 @@ from langchain_ollama import ChatOllama
 
 from backend.tools.code_executor import CodeExecutor
 from backend.tools.chart_generator import generate_chart_from_code
+
+
+_BLOCKED_PATTERNS: tuple[str, ...] = (
+    "subprocess",
+    "os.system",
+    "os.popen",
+    "open(",
+    "eval(",
+    "exec(",
+    "__import__",
+    "__builtins__",
+    "importlib",
+    "shutil",
+    "socket",
+)
+
+_EXEC_TIMEOUT_SECONDS = 30
 
 
 class CodeAgent:
@@ -27,9 +45,17 @@ class CodeAgent:
 
         try:
             code = self.generate_code(task=task, file_data=file_data)
+
+            if not self._is_safe_code(code):
+                print("[CodeAgent] Blocked: generated code contains unsafe patterns.")
+                return {"code": code, "output": "Blocked: unsafe code detected.", "success": False}
+
             needs_chart = self._needs_chart(task)
             if needs_chart and not self._contains_chart_code(code):
                 code = self.generate_code(task=task, file_data=file_data, force_chart=True)
+                if not self._is_safe_code(code):
+                    print("[CodeAgent] Blocked: regenerated chart code contains unsafe patterns.")
+                    return {"code": code, "output": "Blocked: unsafe code detected.", "success": False}
             if needs_chart and not self._contains_chart_code(code):
                 code = self._fallback_chart_code(file_data)
 
@@ -51,6 +77,7 @@ class CodeAgent:
                 output = f"{output}\n\n[chart_path]: {chart_path}".strip()
             return {"code": code, "output": output, "success": True}
         except Exception as exc:
+            print(f"[CodeAgent] Error: {exc}")
             return {"code": "", "output": str(exc), "success": False}
 
     def generate_code(self, task: str, file_data: dict[str, Any] | None = None, force_chart: bool = False) -> str:
@@ -104,14 +131,25 @@ Write ONLY the Python code, no explanation, no markdown backticks.
         return self._ensure_dataframe_setup(code=code, file_data=file_data)
 
     def execute_code(self, code: str, file_data: dict[str, Any] | None = None) -> str:
-        """Execute generated code with restricted builtins and capture stdout."""
+        """Execute generated code with restricted builtins and a 30-second timeout."""
 
-        return self.executor.execute(code=code, file_data=file_data)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(self.executor.execute, code, file_data)
+            try:
+                return future.result(timeout=_EXEC_TIMEOUT_SECONDS)
+            except concurrent.futures.TimeoutError:
+                print(f"[CodeAgent] Execution timed out after {_EXEC_TIMEOUT_SECONDS}s.")
+                return f"Code execution timed out after {_EXEC_TIMEOUT_SECONDS} seconds."
 
     def __call__(self, task: str, file_data: dict[str, Any] | None = None) -> dict[str, Any]:
         """Run analysis when the agent instance is called directly."""
 
         return self.run(task=task, file_data=file_data)
+
+    def _is_safe_code(self, code: str) -> bool:
+        """Return False when the code contains dangerous patterns."""
+
+        return not any(pattern in code for pattern in _BLOCKED_PATTERNS)
 
     def _preview_file_data(self, file_data: dict[str, Any] | None) -> str:
         """Build a compact text preview for the code-generation prompt."""

@@ -5,7 +5,7 @@ __pycache__/
 .venv/
 venv/
 
-agentflow.db
+*.db
 uploads/
 
 node_modules/
