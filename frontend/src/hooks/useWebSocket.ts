@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AgentName, AgentProgress, AgentStatus, TaskRecord } from "../types";
+import type { AgentName, AgentProgress, AgentStatus, CodeAttempt, TaskRecord } from "../types";
 
 const initialAgents: AgentProgress[] = [
   { agent: "planner", status: "idle", message: "Waiting for task." },
@@ -23,6 +23,14 @@ interface TaskEvent {
   task: TaskRecord;
 }
 
+interface CodeAttemptEvent {
+  type: "code_attempt";
+  attempt: number;
+  code: string;
+  error: string | null;
+  traceback: string | null;
+}
+
 interface CompleteEvent {
   type: "complete";
   status: "completed" | "error";
@@ -31,15 +39,18 @@ interface CompleteEvent {
 export function useWebSocket(taskId: string | null): {
   agents: AgentProgress[];
   task: TaskRecord | null;
+  attempts: CodeAttempt[];
   connected: boolean;
 } {
   const [agents, setAgents] = useState<AgentProgress[]>(initialAgents);
   const [task, setTask] = useState<TaskRecord | null>(null);
+  const [attempts, setAttempts] = useState<CodeAttempt[]>([]);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     setAgents(initialAgents);
     setTask(null);
+    setAttempts([]);
     if (!taskId) {
       return;
     }
@@ -49,9 +60,19 @@ export function useWebSocket(taskId: string | null): {
     socket.onclose = () => setConnected(false);
     socket.onerror = () => setConnected(false);
     socket.onmessage = (event: MessageEvent<string>) => {
-      const payload = JSON.parse(event.data) as AgentUpdateEvent | TaskEvent | CompleteEvent;
+      const payload = JSON.parse(event.data) as AgentUpdateEvent | TaskEvent | CompleteEvent | CodeAttemptEvent;
+      if (payload.type === "code_attempt") {
+        const attempt = toAttempt(payload);
+        setAttempts((current) => [...current.filter((a) => a.attempt !== attempt.attempt), attempt]);
+        setAgents((current) => current.map((agent) => (agent.agent === "code_agent" ? attemptProgress(agent, attempt) : agent)));
+        return;
+      }
       if (payload.type === "task") {
         setTask(payload.task);
+        const finalAttempts = payload.task.result?.code_attempts;
+        if (finalAttempts) {
+          setAttempts(finalAttempts.map(toAttempt));
+        }
         if (payload.task.status === "completed") {
           setAgents((current) => completeAgents(current, "completed"));
           setConnected(false);
@@ -75,7 +96,18 @@ export function useWebSocket(taskId: string | null): {
     return () => socket.close();
   }, [taskId]);
 
-  return useMemo(() => ({ agents, task, connected }), [agents, task, connected]);
+  return useMemo(() => ({ agents, task, attempts, connected }), [agents, task, attempts, connected]);
+}
+
+function toAttempt(source: CodeAttempt): CodeAttempt {
+  return { attempt: source.attempt, code: source.code, error: source.error, traceback: source.traceback };
+}
+
+function attemptProgress(agent: AgentProgress, attempt: CodeAttempt): AgentProgress {
+  if (attempt.error) {
+    return { ...agent, status: "running", message: `Attempt ${attempt.attempt} failed: ${attempt.error}. Retrying...` };
+  }
+  return { ...agent, message: `Attempt ${attempt.attempt} succeeded.` };
 }
 
 function completeAgents(current: AgentProgress[], status: "completed" | "error"): AgentProgress[] {

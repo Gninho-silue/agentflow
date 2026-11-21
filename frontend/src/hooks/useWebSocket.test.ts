@@ -137,6 +137,64 @@ describe("useWebSocket", () => {
     });
   });
 
+  it("collects code attempts and shows retries on the code agent", () => {
+    const { result } = renderHook(() => useWebSocket("t1"));
+    const socket = latestSocket();
+
+    socket.receive({
+      type: "code_attempt",
+      agent: "code_agent",
+      attempt: 1,
+      code: "print(1 / 0)",
+      error: "division by zero",
+      traceback: "ZeroDivisionError: division by zero",
+      status: "error",
+      timestamp: "2026-11-21T00:00:00Z",
+    });
+
+    expect(result.current.attempts).toEqual([
+      { attempt: 1, code: "print(1 / 0)", error: "division by zero", traceback: "ZeroDivisionError: division by zero" },
+    ]);
+    const codeAgent = result.current.agents.find((a) => a.agent === "code_agent");
+    expect(codeAgent).toMatchObject({ status: "running", message: "Attempt 1 failed: division by zero. Retrying..." });
+
+    socket.receive({
+      type: "code_attempt",
+      agent: "code_agent",
+      attempt: 2,
+      code: "print(42)",
+      error: null,
+      traceback: null,
+      status: "completed",
+      timestamp: "2026-11-21T00:00:01Z",
+    });
+
+    expect(result.current.attempts.map((a) => a.attempt)).toEqual([1, 2]);
+    expect(result.current.agents.find((a) => a.agent === "code_agent")?.message).toBe("Attempt 2 succeeded.");
+  });
+
+  it("takes the attempts from the final task record", () => {
+    const { result } = renderHook(() => useWebSocket("t1"));
+    const record = taskRecord("completed");
+    record.result = {
+      task: "Analyze",
+      subtasks: [],
+      current_agent: "supervisor",
+      file_data: null,
+      code_output: "42",
+      chart_path: null,
+      report: "# Report",
+      status: "completed",
+      error: null,
+      messages: [],
+      code_attempts: [{ attempt: 1, code: "print(42)", error: null, traceback: null, output: "42" }],
+    };
+
+    latestSocket().receive({ type: "task", task: record });
+
+    expect(result.current.attempts).toEqual([{ attempt: 1, code: "print(42)", error: null, traceback: null }]);
+  });
+
   it("resets state and closes the old socket when the task id changes", () => {
     const { result, rerender } = renderHook(({ id }) => useWebSocket(id), {
       initialProps: { id: "t1" as string | null },

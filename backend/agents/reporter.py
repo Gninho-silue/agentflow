@@ -29,9 +29,9 @@ class ReporterAgent:
                 ]
             )
             report = str(response.content).strip()
-            return self._append_chart(report or self._fallback_report(state), state)
+            return self._finalize(report or self._fallback_report(state), state)
         except Exception:
-            return self._append_chart(self._fallback_report(state), state)
+            return self._finalize(self._fallback_report(state), state)
 
     def __call__(self, state: AgentState) -> str:
         """Write a report when the agent instance is called directly."""
@@ -68,7 +68,49 @@ class ReporterAgent:
             f"File data:\n{self._compact(state.get('file_data'))}\n\n"
             f"Code output:\n{state.get('code_output')}\n\n"
             f"Chart path:\n{self._chart_path(state)}\n\n"
+            f"Code attempts:\n{self._attempts_summary(state)}\n\n"
             f"Error:\n{state.get('error')}"
+        )
+
+    def _finalize(self, report: str, state: AgentState) -> str:
+        """Add the deterministic sections the LLM must not be trusted to write."""
+
+        return self._append_code_failure(self._append_chart(report, state), state)
+
+    def _failed_attempts(self, state: AgentState) -> list[dict[str, Any]] | None:
+        """Return the attempts when the CodeAgent ended in failure, else None."""
+
+        attempts = state.get("code_attempts") or []
+        if attempts and attempts[-1].get("error"):
+            return attempts
+        return None
+
+    def _attempts_summary(self, state: AgentState) -> str:
+        """One line per CodeAgent attempt, for the LLM prompt."""
+
+        attempts = state.get("code_attempts") or []
+        if not attempts:
+            return "None"
+        return "\n".join(
+            f"- attempt {a.get('attempt')}: "
+            + (f"failed: {a['error']}" if a.get("error") else "succeeded")
+            for a in attempts
+        )
+
+    def _append_code_failure(self, report: str, state: AgentState) -> str:
+        """Say clearly in the report that the analysis code could not run."""
+
+        attempts = self._failed_attempts(state)
+        if not attempts:
+            return report
+        count = len(attempts)
+        plural = "s" if count != 1 else ""
+        return (
+            f"{report.rstrip()}\n\n"
+            "## Code execution failed\n\n"
+            f"The generated analysis code still failed after {count} attempt{plural} "
+            "(automatic self-correction). The findings above are not backed by computed results.\n\n"
+            f"Last error:\n\n```\n{attempts[-1].get('error')}\n```"
         )
 
     def _compact(self, value: Any) -> Any:

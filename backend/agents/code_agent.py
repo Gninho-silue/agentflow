@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -10,6 +9,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
+from backend.sandbox import SandboxResult
 from backend.tools.code_executor import CodeExecutor
 
 
@@ -30,6 +30,9 @@ _BLOCKED_PATTERNS: tuple[str, ...] = (
 )
 
 _CHART_DIR = Path("uploads")
+_UNSAFE_MESSAGE = "Blocked: unsafe code detected."
+
+MAX_ATTEMPTS = 3
 
 
 class CodeAgent:
@@ -47,52 +50,134 @@ class CodeAgent:
         file_data: dict[str, Any] | None = None,
         file_path: str | None = None,
     ) -> dict[str, Any]:
-        """Generate Python code for the task and execute it in the sandbox.
+        """Generate code, run it in the sandbox and self-correct on failure.
+
+        When the code fails (exception, or blocked by the safety pre-filter),
+        the failing code and its traceback are sent back to the LLM for a fix,
+        up to ``MAX_ATTEMPTS`` runs in total. Every attempt is returned in
+        ``attempts`` (``attempt``, ``code``, ``error``, ``traceback``, ``output``).
 
         ``file_path`` (the uploaded file) is copied into the sandbox's working
         directory; the server copy is never exposed.
         """
 
+        attempts: list[dict[str, Any]] = []
         try:
-            code = self.generate_code(task=task, file_data=file_data)
-
-            if not self._is_safe_code(code):
-                print("[CodeAgent] Blocked: generated code contains unsafe patterns.")
-                return {"code": code, "output": "Blocked: unsafe code detected.", "success": False}
-
             needs_chart = self._needs_chart(task)
-            if needs_chart and not self._contains_chart_code(code):
-                code = self.generate_code(task=task, file_data=file_data, force_chart=True)
-                if not self._is_safe_code(code):
-                    print("[CodeAgent] Blocked: regenerated chart code contains unsafe patterns.")
-                    return {"code": code, "output": "Blocked: unsafe code detected.", "success": False}
-            if needs_chart and not self._contains_chart_code(code):
-                code = self._fallback_chart_code(file_data)
-
+            code = self._initial_code(task, file_data, needs_chart)
             input_files = [Path(file_path)] if file_path and Path(file_path).is_file() else None
-            result = self.executor.run(code, file_data, input_files=input_files)
-            chart_path = self._save_chart(result.images)
 
-            if result.ok:
-                output = result.stdout or ("Chart generated successfully." if chart_path else "")
-                success = True
-            elif needs_chart and chart_path:
-                output, success = "Chart generated successfully.", True
-            else:
-                output, success = result.error or "Execution failed.", False
+            for number in range(1, MAX_ATTEMPTS + 1):
+                if self._is_safe_code(code):
+                    outcome = self.executor.run(code, file_data, input_files=input_files)
+                else:
+                    print("[CodeAgent] Blocked: generated code contains unsafe patterns.")
+                    outcome = SandboxResult(ok=False, error=_UNSAFE_MESSAGE, error_type="UnsafeCode")
 
-            if chart_path:
-                output = f"{output}\n\n[chart_path]: {chart_path}".strip()
+                chart_path = self._save_chart(outcome.images) if (outcome.ok or needs_chart) else None
+                success = outcome.ok or bool(needs_chart and chart_path)
+                attempts.append(
+                    {
+                        "attempt": number,
+                        "code": code,
+                        "error": None if success else outcome.error,
+                        "traceback": None if success else outcome.traceback,
+                        "output": outcome.stdout,
+                    }
+                )
+
+                if success:
+                    output = (
+                        outcome.stdout
+                        if outcome.ok and (outcome.stdout or not chart_path)
+                        else "Chart generated successfully."
+                    )
+                    if chart_path:
+                        output = f"{output}\n\n[chart_path]: {chart_path}".strip()
+                    return {
+                        "code": code,
+                        "output": output,
+                        "success": True,
+                        "error": None,
+                        "traceback": None,
+                        "attempts": attempts,
+                    }
+
+                print(f"[CodeAgent] Attempt {number}/{MAX_ATTEMPTS} failed: {outcome.error}")
+                if number < MAX_ATTEMPTS:
+                    code = self.fix_code(task, file_data, code, outcome)
+
+            last = attempts[-1]
             return {
-                "code": code,
-                "output": output,
-                "success": success,
-                "error": None if success else result.error,
-                "traceback": None if success else result.traceback,
+                "code": last["code"],
+                "output": last["error"] or "Execution failed.",
+                "success": False,
+                "error": last["error"] or "Execution failed.",
+                "traceback": last["traceback"],
+                "attempts": attempts,
             }
         except Exception as exc:
             print(f"[CodeAgent] Error: {exc}")
-            return {"code": "", "output": str(exc), "success": False}
+            return {
+                "code": attempts[-1]["code"] if attempts else "",
+                "output": str(exc),
+                "success": False,
+                "error": str(exc),
+                "traceback": None,
+                "attempts": attempts,
+            }
+
+    def fix_code(
+        self,
+        task: str,
+        file_data: dict[str, Any] | None,
+        code: str,
+        outcome: SandboxResult,
+    ) -> str:
+        """Send the failing code and its traceback back to the LLM for a fix."""
+
+        columns = (file_data or {}).get("columns", [])
+        error = outcome.traceback or f"{outcome.error_type or 'Error'}: {outcome.error}"
+        if outcome.error_type == "UnsafeCode":
+            error = (
+                f"{outcome.error} The code was rejected before running because it uses a "
+                "forbidden pattern (open(, eval(, exec(, __import__, subprocess, os.system, "
+                "socket, shutil, importlib, __builtins__)."
+            )
+
+        system = f"""
+You are a Python data analyst. The code below was written for this task but it failed.
+Task: {task}
+
+The data is available as a pandas DataFrame called 'df' with these columns:
+{columns}
+
+Fix the code so that it runs and completes the task.
+Rules:
+- Use only: pandas (pd), matplotlib (plt), the df variable
+- Do NOT import csv, os, or open any files
+- Do NOT use plt.show() - use plt.savefig() instead
+- Print key results using print()
+
+Write ONLY the corrected Python code, no explanation, no markdown backticks.
+"""
+        response = self.llm.invoke(
+            [
+                SystemMessage(content=system),
+                HumanMessage(content=f"Code that failed:\n{code}\n\nError:\n{error}"),
+            ]
+        )
+        return self._strip_code_fence(str(response.content).strip())
+
+    def _initial_code(self, task: str, file_data: dict[str, Any] | None, needs_chart: bool) -> str:
+        """First version of the code; insists on matplotlib when a chart is requested."""
+
+        code = self.generate_code(task=task, file_data=file_data)
+        if needs_chart and self._is_safe_code(code) and not self._contains_chart_code(code):
+            code = self.generate_code(task=task, file_data=file_data, force_chart=True)
+            if self._is_safe_code(code) and not self._contains_chart_code(code):
+                code = self._fallback_chart_code(file_data)
+        return code
 
     def generate_code(self, task: str, file_data: dict[str, Any] | None = None, force_chart: bool = False) -> str:
         """Ask the LLM for Python code that solves the analysis task."""
@@ -141,8 +226,7 @@ Write ONLY the Python code, no explanation, no markdown backticks.
                 HumanMessage(content=f"Rows sample:\n{rows[:10] if isinstance(rows, list) else data_preview}"),
             ]
         )
-        code = self._strip_code_fence(str(response.content).strip())
-        return self._ensure_dataframe_setup(code=code, file_data=file_data)
+        return self._strip_code_fence(str(response.content).strip())
 
     def __call__(
         self, task: str, file_data: dict[str, Any] | None = None, file_path: str | None = None
@@ -193,16 +277,6 @@ Write ONLY the Python code, no explanation, no markdown backticks.
         """Return True when generated code uses matplotlib."""
 
         return "matplotlib" in code or "plt." in code
-
-    def _ensure_dataframe_setup(self, code: str, file_data: dict[str, Any] | None) -> str:
-        """Prepend df setup because the shared executor only receives file_data."""
-
-        if "df" not in code or not file_data:
-            return code
-        if re.search(r"\bdf\s*=", code):
-            return code
-        setup = "df = pd.DataFrame(file_data.get('rows', []), columns=file_data.get('columns', []))"
-        return f"{setup}\n{code}"
 
     def _save_chart(self, images: list[bytes]) -> str | None:
         """Store the first image produced in the sandbox under uploads/."""

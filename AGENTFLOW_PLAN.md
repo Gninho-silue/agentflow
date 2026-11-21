@@ -61,10 +61,16 @@
   - Limite connue : sous Windows (dev local), pas de limite mémoire ni de nombre de processus (pas de `setrlimit`).
 
 ## Étape 3 — Boucle d'auto-correction du CodeAgent (TDD)
-- [ ] Si le code généré lève une erreur, renvoyer le code + la traceback au LLM et demander une correction ; **3 tentatives max**.
-- [ ] Stocker chaque tentative dans l'état (`code`, `error`, `attempt`) et l'envoyer au frontend via WebSocket.
-- [ ] Tests avec faux LLM : réussite au 1er essai ; échec puis réussite au 2e ; 3 échecs → l'erreur remonte proprement au Reporter, qui le signale dans le rapport.
-- [ ] Commit : `feat(code-agent): self-correction loop with error feedback` → push.
+- [x] Si le code généré lève une erreur, renvoyer le code + la traceback au LLM et demander une correction ; **3 tentatives max**.
+- [x] Stocker chaque tentative dans l'état (`code`, `error`, `attempt`) et l'envoyer au frontend via WebSocket.
+- [x] Tests avec faux LLM : réussite au 1er essai ; échec puis réussite au 2e ; 3 échecs → l'erreur remonte proprement au Reporter, qui le signale dans le rapport.
+- [x] Commit : `feat(code-agent): self-correction loop with error feedback` → push.
+- Bilan : tests écrits d'abord (rouges), puis boucle dans `CodeAgent.run` (`MAX_ATTEMPTS = 3`). 82 tests backend, 21 frontend.
+  - La correction envoie au LLM la tâche, les colonnes, le code fautif et la traceback (limitée au code généré). Un code refusé par le pré-filtre compte comme une tentative ratée, avec la raison du refus, et n'atteint jamais le sandbox.
+  - `code_attempts` dans l'état, persisté dans `result.code_attempts`. Un événement WebSocket `code_attempt` par tentative ; `useWebSocket` expose `attempts` et affiche « Attempt N failed… Retrying » sur le CodeAgent.
+  - Après 3 échecs : le pipeline va quand même au Reporter, qui ajoute une section déterministe « Code execution failed » (nombre de tentatives, dernière erreur). Le statut reste `completed`, avec `error` renseigné.
+  - Limite : les événements `code_attempt` partent à la fin du nœud CodeAgent, pas en direct pendant les tentatives. L'affichage détaillé (code, tentatives) est prévu à l'étape 5.
+  - `_ensure_dataframe_setup` supprimé : le sandbox fournit déjà `df`.
 
 ## Étape 4 — Choix du fournisseur LLM (nécessaire pour le déploiement)
 - [ ] Une seule fabrique `get_llm()` (supprimer les `ChatOllama(model="llama3.2:1b")` par défaut dans chaque agent).

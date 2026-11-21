@@ -24,3 +24,5 @@ class AgentState(TypedDict):
     agents_needed: list[str]
     execution_order: list[str]
     completed_agents: list[str]
+    # One entry per CodeAgent run: attempt, code, error, traceback, output.
+    code_attempts: list[dict]

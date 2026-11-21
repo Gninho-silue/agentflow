@@ -31,6 +31,7 @@ def initial_state(task: str, file_path: str | None = None) -> dict[str, Any]:
         "agents_needed": [],
         "execution_order": [],
         "completed_agents": [],
+        "code_attempts": [],
     }
 
 
@@ -76,6 +77,9 @@ def test_skips_file_agent_without_file() -> None:
     assert final["file_data"] is None
     assert final["code_output"] == "42"
     assert final["completed_agents"] == ["code_agent", "reporter"]
+    assert final["code_attempts"] == [
+        {"attempt": 1, "code": "print(6 * 7)", "error": None, "traceback": None, "output": "42"}
+    ]
 
 
 def test_file_agent_reports_missing_upload_without_crashing() -> None:
@@ -89,15 +93,40 @@ def test_file_agent_reports_missing_upload_without_crashing() -> None:
     assert final["status"] == "completed"
 
 
-def test_failing_generated_code_still_produces_a_report() -> None:
-    """Current behavior: a CodeAgent failure does not stop the pipeline."""
-
-    graph = create_workflow(llm=fake_llm(PLAN_WITHOUT_FILE, "print(1 / 0)", REPORT))
+def test_code_fixed_on_second_attempt() -> None:
+    graph = create_workflow(
+        llm=fake_llm(PLAN_WITHOUT_FILE, "print(1 / 0)", "print(6 * 7)", REPORT)
+    )
     _, final = run(graph, initial_state("Compute something"))
 
     assert final["status"] == "completed"
+    assert final["code_output"] == "42"
+    assert final["error"] is None
+    attempts = final["code_attempts"]
+    assert [a["attempt"] for a in attempts] == [1, 2]
+    assert attempts[0]["error"] == "division by zero"
+    assert "ZeroDivisionError" in attempts[0]["traceback"]
+    assert attempts[1]["error"] is None
+    assert "Code execution failed" not in final["report"]
+
+
+def test_three_failed_attempts_reach_the_reporter() -> None:
+    """The pipeline still produces a report, and the report says the code failed."""
+
+    graph = create_workflow(
+        llm=fake_llm(PLAN_WITHOUT_FILE, "print(1 / 0)", "print(2 / 0)", "print(3 / 0)", REPORT)
+    )
+    visited, final = run(graph, initial_state("Compute something"))
+
+    assert visited == ["planner", "code_agent", "reporter", "supervisor"]
+    assert final["status"] == "completed"
     assert final["code_output"] == "division by zero"
-    assert final["report"] == REPORT
+    assert final["error"] == "division by zero"
+    assert len(final["code_attempts"]) == 3
+    assert final["report"].startswith(REPORT)
+    assert "## Code execution failed" in final["report"]
+    assert "3 attempts" in final["report"]
+    assert "division by zero" in final["report"]
 
 
 @pytest.mark.parametrize(

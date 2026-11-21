@@ -8,6 +8,14 @@ export interface AgentProgress {
   message: string;
 }
 
+/** One run of the CodeAgent's generated code (self-correction retries included). */
+export interface CodeAttempt {
+  attempt: number;
+  code: string;
+  error: string | null;
+  traceback: string | null;
+}
+
 export interface TaskResult {
   task: string;
   subtasks: string[];
@@ -19,6 +27,7 @@ export interface TaskResult {
   status: string;
   error: string | null;
   messages: string[];
+  code_attempts?: (CodeAttempt & { output?: string })[];
 }
 
 export interface TaskRecord {

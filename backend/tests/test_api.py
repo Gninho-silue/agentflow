@@ -66,8 +66,42 @@ def test_execute_runs_workflow_and_persists_result(client: TestClient) -> None:
 
     events = routes.TASK_EVENTS[task_id]
     assert events[0]["agent"] == "created"
-    assert [e["agent"] for e in events[2:-1]] == ["planner", "code_agent", "reporter", "supervisor"]
+    updates = [e for e in events if e["type"] == "agent_update"]
+    assert [e["agent"] for e in updates[2:-1]] == ["planner", "code_agent", "reporter", "supervisor"]
+    assert [e["type"] for e in events].count("code_attempt") == 1
     assert events[-1]["status"] == "completed"
+
+
+def test_code_attempts_are_persisted_and_streamed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.graph.workflow import create_workflow
+    from backend.tests.helpers import PLAN_WITHOUT_FILE, REPORT, fake_llm
+
+    monkeypatch.setattr(
+        routes,
+        "workflow",
+        create_workflow(llm=fake_llm(PLAN_WITHOUT_FILE, "print(1 / 0)", "print(6 * 7)", REPORT)),
+    )
+    task_id = create(client)
+    client.post(f"/api/tasks/{task_id}/execute")
+
+    result = client.get(f"/api/tasks/{task_id}/status").json()["result"]
+    assert [a["attempt"] for a in result["code_attempts"]] == [1, 2]
+    assert result["code_attempts"][0]["error"] == "division by zero"
+
+    attempt_events = [e for e in routes.TASK_EVENTS[task_id] if e["type"] == "code_attempt"]
+    assert [e["attempt"] for e in attempt_events] == [1, 2]
+    assert attempt_events[0]["code"] == "print(1 / 0)"
+    assert attempt_events[0]["error"] == "division by zero"
+    assert "ZeroDivisionError" in attempt_events[0]["traceback"]
+    assert attempt_events[1]["error"] is None
+
+    with client.websocket_connect(f"/ws/{task_id}") as ws:
+        streamed = []
+        while (message := ws.receive_json())["type"] != "complete":
+            streamed.append(message)
+    assert [m["attempt"] for m in streamed if m["type"] == "code_attempt"] == [1, 2]
 
 
 def test_execute_unknown_task_returns_404(client: TestClient) -> None:

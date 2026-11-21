@@ -214,12 +214,16 @@ def _run_workflow(task_id: str) -> None:
             "agents_needed": [],
             "execution_order": [],
             "completed_agents": [],
+            "code_attempts": [],
         }
 
         final_state = initial_state
         for chunk in workflow.stream(initial_state):
             node_name, state = next(iter(chunk.items()))
             final_state = state
+            if node_name == "code_agent":
+                for attempt in state.get("code_attempts", []):
+                    TASK_EVENTS.setdefault(task_id, []).append(_attempt_event(attempt))
             TASK_EVENTS.setdefault(task_id, []).append(
                 _event(node_name, _latest_message(state.get("messages", [])), state.get("status", "running"))
             )
@@ -283,6 +287,21 @@ def _event(agent: str, message: str, status: str) -> dict[str, Any]:
     }
 
 
+def _attempt_event(attempt: dict[str, Any]) -> dict[str, Any]:
+    """Build a websocket event describing one CodeAgent attempt."""
+
+    return {
+        "type": "code_attempt",
+        "agent": "code_agent",
+        "attempt": attempt.get("attempt"),
+        "code": attempt.get("code"),
+        "error": attempt.get("error"),
+        "traceback": attempt.get("traceback"),
+        "status": "error" if attempt.get("error") else "completed",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _latest_message(messages: list[BaseMessage]) -> str:
     """Return the latest LangChain message content as text."""
 
@@ -308,6 +327,7 @@ def _serialize_state(state: AgentState) -> dict[str, Any]:
         "completed_agents": state.get("completed_agents", []),
         "agents_needed": state.get("agents_needed", []),
         "execution_order": state.get("execution_order", []),
+        "code_attempts": state.get("code_attempts", []),
         "messages": [str(message.content) for message in state.get("messages", [])],
     }
 

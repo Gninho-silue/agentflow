@@ -143,15 +143,22 @@ def _code_node(code_agent: CodeAgent) -> Any:
                 file_path=state.get("file_path"),
             )
             messages = state.get("messages", [])
-            messages.append(AIMessage(content=f"CodeAgent completed. Success: {result['success']}"))
+            attempts = result.get("attempts", [])
+            messages.append(
+                AIMessage(
+                    content=f"CodeAgent completed. Success: {result['success']} "
+                    f"({len(attempts)} attempt{'s' if len(attempts) != 1 else ''})."
+                )
+            )
             return {
                 **state,
                 "code_output": str(result["output"]),
+                "code_attempts": attempts,
                 "completed_agents": _mark_completed(state, "code_agent"),
                 "current_agent": "reporter",
                 "messages": messages,
                 "status": "running",
-                "error": None if result["success"] else str(result["output"]),
+                "error": None if result["success"] else str(result.get("error") or result["output"]),
             }
         except Exception as exc:
             return _error_state(state, "code_agent", exc)
@@ -174,7 +181,7 @@ def _reporter_node(reporter: ReporterAgent) -> Any:
                 "current_agent": "supervisor",
                 "messages": messages,
                 "status": "running",
-                "error": None,
+                "error": state.get("error"),
             }
         except Exception as exc:
             return _error_state(state, "reporter", exc)

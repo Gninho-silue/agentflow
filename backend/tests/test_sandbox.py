@@ -128,7 +128,9 @@ def test_code_agent_uses_injected_sandbox(tmp_path: Path) -> None:
 
     result = agent.run("Compute the answer", SALES, file_path=str(upload))
 
-    assert result == {"code": "print(42)", "output": "42", "success": True, "error": None, "traceback": None}
+    assert result["output"] == "42"
+    assert result["success"] is True
+    assert len(result["attempts"]) == 1
     assert fake.calls[0]["input_files"] == [upload]
 
 
