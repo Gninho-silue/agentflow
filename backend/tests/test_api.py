@@ -104,6 +104,22 @@ def test_code_attempts_are_persisted_and_streamed(
     assert [m["attempt"] for m in streamed if m["type"] == "code_attempt"] == [1, 2]
 
 
+def test_duration_per_agent_is_recorded(client: TestClient) -> None:
+    task_id = create(client)
+    client.post(f"/api/tasks/{task_id}/execute")
+
+    status = client.get(f"/api/tasks/{task_id}/status").json()
+    durations = status["result"]["agent_durations"]
+    assert list(durations) == ["planner", "code_agent", "reporter", "supervisor"]
+    assert all(isinstance(v, float) and v >= 0 for v in durations.values())
+    assert sum(durations.values()) <= status["execution_time"] + 0.01
+
+    updates = [e for e in routes.TASK_EVENTS[task_id] if e["type"] == "agent_update"]
+    node_updates = updates[2:-1]  # skip "created" / "queued" and the final summary
+    assert [e["agent"] for e in node_updates] == list(durations)
+    assert all(isinstance(e["duration"], float) for e in node_updates)
+
+
 def test_execute_unknown_task_returns_404(client: TestClient) -> None:
     assert client.post("/api/tasks/does-not-exist/execute").status_code == 404
 

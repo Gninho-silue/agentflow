@@ -1,0 +1,14 @@
+[
+  {"sku": "EL-100", "name": "Wireless Earbuds", "category": "Electronics", "price": 79.0, "stock": 140, "rating": 4.4},
+  {"sku": "EL-101", "name": "USB-C Charger 65W", "category": "Electronics", "price": 39.0, "stock": 12, "rating": 4.7},
+  {"sku": "EL-102", "name": "Bluetooth Speaker", "category": "Electronics", "price": 59.0, "stock": 0, "rating": 4.1},
+  {"sku": "EL-103", "name": "Smart Watch", "category": "Electronics", "price": 199.0, "stock": 35, "rating": 4.3},
+  {"sku": "HO-200", "name": "Ceramic Mug Set", "category": "Home", "price": 24.0, "stock": 310, "rating": 4.6},
+  {"sku": "HO-201", "name": "Desk Lamp", "category": "Home", "price": 45.0, "stock": 8, "rating": 3.9},
+  {"sku": "HO-202", "name": "Throw Blanket", "category": "Home", "price": 35.0, "stock": 95, "rating": 4.8},
+  {"sku": "HO-203", "name": "Air Purifier", "category": "Home", "price": 149.0, "stock": 0, "rating": 4.2},
+  {"sku": "SP-300", "name": "Yoga Mat", "category": "Sports", "price": 29.0, "stock": 220, "rating": 4.5},
+  {"sku": "SP-301", "name": "Running Belt", "category": "Sports", "price": 19.0, "stock": 5, "rating": 3.8},
+  {"sku": "SP-302", "name": "Resistance Bands", "category": "Sports", "price": 22.0, "stock": 160, "rating": 4.6},
+  {"sku": "SP-303", "name": "Foam Roller", "category": "Sports", "price": 27.0, "stock": 47, "rating": 4.4}
+]

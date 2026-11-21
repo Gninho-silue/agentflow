@@ -86,11 +86,17 @@
   - Remarque : sous Windows, en pleine suite, le test « boucle infinie < 10 s » a dépassé une fois (12 s) à cause du démarrage lent du sous-processus ; seul il prend environ 7 s, et sous Linux environ 6 s.
 
 ## Étape 5 — Démo utilisable par un visiteur
-- [ ] **3 exemples en un clic**, chacun avec un petit jeu de données fourni dans le repo (ex. ventes mensuelles CSV, catalogue produits JSON, avis clients TXT) : la tâche et le fichier se remplissent automatiquement. Un visiteur n'a pas de CSV sous la main.
-- [ ] Dans le résultat : **code généré** affiché (repliable, coloration syntaxique), **tentatives** de correction visibles, **graphiques** affichés dans le rapport, **durée par agent**.
-- [ ] Rapport téléchargeable en Markdown (existe) + copie en un clic.
-- [ ] Tests frontend correspondants.
-- [ ] Commit : `feat(ui): one-click examples, generated code, retries and charts in results` → push.
+- [x] **3 exemples en un clic**, chacun avec un petit jeu de données fourni dans le repo (ex. ventes mensuelles CSV, catalogue produits JSON, avis clients TXT) : la tâche et le fichier se remplissent automatiquement. Un visiteur n'a pas de CSV sous la main.
+- [x] Dans le résultat : **code généré** affiché (repliable, coloration syntaxique), **tentatives** de correction visibles, **graphiques** affichés dans le rapport, **durée par agent**.
+- [x] Rapport téléchargeable en Markdown (existe) + copie en un clic.
+- [x] Tests frontend correspondants.
+- [x] Commit : `feat(ui): one-click examples, generated code, retries and charts in results` → push.
+- Bilan : 96 tests backend, 34 frontend. Vérifié dans le navigateur (backend + frontend lancés, sans LLM).
+  - Jeux de données dans `frontend/public/examples/` (ventes mensuelles CSV, catalogue produits JSON, avis clients TXT), testés côté backend avec le FileAgent ; `ExamplePicker` charge le fichier et remplit tâche + fichier via la prop `preset` de `TaskInput`.
+  - Backend : `result.agent_durations` (secondes par nœud) et `duration` dans chaque événement `agent_update`.
+  - ResultViewer : code final repliable (Prism, Python seul), liste des tentatives avec erreur et traceback, durée par agent, bouton Copy (+ Download existant).
+  - Bug corrigé : les graphiques du rapport pointaient vers `/uploads/...` sur l'origine du frontend ; ils sont maintenant chargés depuis l'API (`apiBase`). Renderer `code` typé (fin du `any`).
+  - À traiter à l'étape 6 : quand Ollama est injoignable, le rapport affiche l'erreur brute (`WinError 10061`) et « 0 attempts » au lieu d'un message clair « LLM indisponible ». Bundle JS passé à 555 kB (Prism) : envisager un import dynamique.
 
 ## Étape 6 — Interface (skill frontend-design)
 - [ ] Même direction que le portfolio silue-dev : fond sombre bleuté, une couleur d'accent, police sans-serif pour le texte et monospace seulement pour le code et les labels.

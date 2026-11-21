@@ -28,6 +28,8 @@ export interface TaskResult {
   error: string | null;
   messages: string[];
   code_attempts?: (CodeAttempt & { output?: string })[];
+  /** Seconds spent in each workflow node, in execution order. */
+  agent_durations?: Record<string, number>;
 }
 
 export interface TaskRecord {

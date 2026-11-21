@@ -1,13 +1,25 @@
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
-import { Download } from "lucide-react";
+import { Check, CircleAlert, CircleCheck, Copy, Download } from "lucide-react";
 import type { Components } from "react-markdown";
-import type { TaskRecord } from "../types";
+import type { CodeAttempt, TaskRecord } from "../types";
+import { CodeBlock } from "./CodeBlock";
 
 interface ResultViewerProps {
   task: TaskRecord | null;
+  /** Backend origin: charts are served by the API under /uploads/. */
+  apiBase: string;
 }
+
+const AGENT_LABELS: Record<string, string> = {
+  planner: "Planner",
+  file_agent: "FileAgent",
+  code_agent: "CodeAgent",
+  reporter: "Reporter",
+  supervisor: "Supervisor",
+};
 
 /**
  * Strip script/iframe tags and inline event handlers from LLM-generated report
@@ -20,12 +32,23 @@ function sanitizeReport(raw: string): string {
     .replace(/\bon[a-z]{1,20}\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, "");
 }
 
-export function ResultViewer({ task }: ResultViewerProps): JSX.Element | null {
+function formatSeconds(seconds: number): string {
+  return seconds < 0.1 ? "<0.1s" : `${seconds.toFixed(1)}s`;
+}
+
+export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element | null {
+  const [copied, setCopied] = useState(false);
+  const components = useMemo(() => markdownComponents(apiBase), [apiBase]);
+
   if (!task || (!task.result && task.status !== "error")) {
     return null;
   }
 
-  const report = sanitizeReport(task?.result?.report ?? "");
+  const report = sanitizeReport(task.result?.report ?? "");
+  const attempts: CodeAttempt[] = task.result?.code_attempts ?? [];
+  const finalCode = attempts.length ? attempts[attempts.length - 1].code : null;
+  const showAttempts = attempts.length > 1 || attempts.some((attempt) => attempt.error);
+  const durations = Object.entries(task.result?.agent_durations ?? {});
   const metadata = [
     task.execution_time ? `${task.execution_time}s` : null,
     task.agents_used?.length ? task.agents_used.join(" → ") : null,
@@ -46,6 +69,20 @@ export function ResultViewer({ task }: ResultViewerProps): JSX.Element | null {
     URL.revokeObjectURL(url);
   };
 
+  const copyReport = async () => {
+    if (!report) return;
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const buttonClass =
+    "flex items-center gap-2 rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-xs font-medium text-slate-300 transition-all duration-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
     <section className="rounded-xl border border-borderline bg-panel/70 p-5 backdrop-blur-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -55,16 +92,28 @@ export function ResultViewer({ task }: ResultViewerProps): JSX.Element | null {
             {metadata ? <p className="text-xs text-slate-400">{metadata}</p> : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={downloadReport}
-          disabled={!report}
-          className="flex items-center gap-2 rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-xs font-medium text-slate-300 transition-all duration-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Download className="h-4 w-4" aria-hidden="true" />
-          Download
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void copyReport()} disabled={!report} className={buttonClass}>
+            {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+          <button type="button" onClick={downloadReport} disabled={!report} className={buttonClass}>
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Download
+          </button>
+        </div>
       </div>
+
+      {durations.length ? (
+        <ul aria-label="Duration per agent" className="mb-4 flex flex-wrap gap-2">
+          {durations.map(([agent, seconds]) => (
+            <li key={agent} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[11px] text-slate-400">
+              <span className="text-slate-300">{AGENT_LABELS[agent] ?? agent}</span>
+              <span className="font-mono tabular-nums">{formatSeconds(seconds)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {task.status === "error" ? (
         <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{task.error}</div>
@@ -72,78 +121,113 @@ export function ResultViewer({ task }: ResultViewerProps): JSX.Element | null {
 
       {report ? (
         <div className="rounded-xl border border-borderline bg-panel p-6">
-          <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]} components={components}>
             {report}
           </ReactMarkdown>
         </div>
+      ) : null}
+
+      {showAttempts ? (
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold text-slate-200">Self-correction</h3>
+          <ol aria-label="Code attempts" className="flex flex-col gap-2">
+            {attempts.map((attempt) => (
+              <li key={attempt.attempt} className="rounded-lg border border-borderline p-3">
+                <div className="flex items-center gap-2 text-[13px]">
+                  {attempt.error ? (
+                    <CircleAlert className="h-4 w-4 text-red-400" aria-hidden="true" />
+                  ) : (
+                    <CircleCheck className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                  )}
+                  <span className="font-medium text-slate-200">Attempt {attempt.attempt}</span>
+                  <span className={attempt.error ? "text-red-300" : "text-emerald-300"}>
+                    {attempt.error ? `failed: ${attempt.error}` : "succeeded"}
+                  </span>
+                </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-slate-400">Code{attempt.traceback ? " and traceback" : ""}</summary>
+                  <div className="mt-2 flex flex-col gap-2">
+                    <CodeBlock code={attempt.code} />
+                    {attempt.traceback ? <CodeBlock code={attempt.traceback} language="text" /> : null}
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+
+      {finalCode ? (
+        <details className="mt-4 rounded-lg border border-borderline p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-200">Generated code</summary>
+          <div className="mt-3">
+            <CodeBlock code={finalCode} />
+          </div>
+        </details>
       ) : null}
     </section>
   );
 }
 
-const markdownComponents: Components = {
-  h1({ children }) {
-    return <h1 className="mb-4 mt-1 text-2xl font-semibold text-slate-100">{children}</h1>;
-  },
-  h2({ children }) {
-    return <h2 className="mb-3 mt-6 text-xl font-semibold text-slate-100">{children}</h2>;
-  },
-  h3({ children }) {
-    return <h3 className="mb-2 mt-5 text-base font-semibold text-slate-100">{children}</h3>;
-  },
-  p({ children }) {
-    return <p className="mb-4 text-sm leading-7 text-slate-300">{children}</p>;
-  },
-  ul({ children }) {
-    return <ul className="mb-4 list-disc space-y-2 pl-4 text-sm text-slate-300">{children}</ul>;
-  },
-  ol({ children }) {
-    return <ol className="mb-4 list-decimal space-y-2 pl-4 text-sm text-slate-300">{children}</ol>;
-  },
-  li({ children }) {
-    return <li className="leading-6">{children}</li>;
-  },
-  table({ children }) {
-    return (
-      <div className="mb-5 overflow-x-auto rounded-lg border border-borderline">
-        <table className="w-full border-collapse text-left text-sm text-slate-300">{children}</table>
-      </div>
-    );
-  },
-  thead({ children }) {
-    return <thead className="bg-white/5 text-slate-100">{children}</thead>;
-  },
-  th({ children }) {
-    return <th className="border-b border-borderline px-3 py-2 font-medium">{children}</th>;
-  },
-  td({ children }) {
-    return <td className="border-b border-borderline px-3 py-2 last:border-b-0">{children}</td>;
-  },
-  pre({ children }) {
-    return <>{children}</>;
-  },
-  // TODO(step 5): type this renderer; react-markdown v9 no longer passes `inline`.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code({ inline, children, ...props }: any) {
-    if (inline) {
+function markdownComponents(apiBase: string): Components {
+  const base = apiBase.replace(/\/+$/, "");
+  return {
+    h1({ children }) {
+      return <h1 className="mb-4 mt-1 text-2xl font-semibold text-slate-100">{children}</h1>;
+    },
+    h2({ children }) {
+      return <h2 className="mb-3 mt-6 text-xl font-semibold text-slate-100">{children}</h2>;
+    },
+    h3({ children }) {
+      return <h3 className="mb-2 mt-5 text-base font-semibold text-slate-100">{children}</h3>;
+    },
+    p({ children }) {
+      return <p className="mb-4 text-sm leading-7 text-slate-300">{children}</p>;
+    },
+    ul({ children }) {
+      return <ul className="mb-4 list-disc space-y-2 pl-4 text-sm text-slate-300">{children}</ul>;
+    },
+    ol({ children }) {
+      return <ol className="mb-4 list-decimal space-y-2 pl-4 text-sm text-slate-300">{children}</ol>;
+    },
+    li({ children }) {
+      return <li className="leading-6">{children}</li>;
+    },
+    table({ children }) {
       return (
-        <code className="rounded bg-slate-950 px-1.5 py-0.5 font-mono text-[13px] text-emerald-400" {...props}>
+        <div className="mb-5 overflow-x-auto rounded-lg border border-borderline">
+          <table className="w-full border-collapse text-left text-sm text-slate-300">{children}</table>
+        </div>
+      );
+    },
+    thead({ children }) {
+      return <thead className="bg-white/5 text-slate-100">{children}</thead>;
+    },
+    th({ children }) {
+      return <th className="border-b border-borderline px-3 py-2 font-medium">{children}</th>;
+    },
+    td({ children }) {
+      return <td className="border-b border-borderline px-3 py-2 last:border-b-0">{children}</td>;
+    },
+    // Fenced blocks: the <pre> carries the block style and resets the inline <code> style.
+    pre({ children }) {
+      return (
+        <pre className="mb-5 overflow-x-auto rounded-lg bg-[#020617] p-4 font-mono text-[13px] leading-6 text-emerald-400 [&_code]:bg-transparent [&_code]:p-0">
+          {children}
+        </pre>
+      );
+    },
+    code({ children, className }) {
+      return (
+        <code className={`rounded bg-slate-950 px-1.5 py-0.5 font-mono text-[13px] text-emerald-400 ${className ?? ""}`}>
           {children}
         </code>
       );
-    }
-    return (
-      <pre className="mb-5 overflow-x-auto rounded-lg bg-[#020617] p-4">
-        <code className="font-mono text-[13px] leading-6 text-emerald-400" {...props}>
-          {children}
-        </code>
-      </pre>
-    );
-  },
-  // Only render img tags that point to our own uploads — block all other src values
-  img({ src, alt }) {
-    const safeSrc = typeof src === "string" && src.startsWith("/uploads/") ? src : undefined;
-    if (!safeSrc) return null;
-    return <img src={safeSrc} alt={alt ?? "Chart"} className="max-w-full rounded-lg" />;
-  },
-};
+    },
+    // Only our own chart uploads are rendered, loaded from the backend origin.
+    img({ src, alt }) {
+      if (typeof src !== "string" || !src.startsWith("/uploads/")) return null;
+      return <img src={`${base}${src}`} alt={alt ?? "Chart"} className="max-w-full rounded-lg" />;
+    },
+  };
+}

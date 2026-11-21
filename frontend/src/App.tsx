@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AgentPipeline } from "./components/AgentPipeline";
 import { ResultViewer } from "./components/ResultViewer";
 import { TaskHistory } from "./components/TaskHistory";
-import { TaskInput } from "./components/TaskInput";
+import { ExamplePicker } from "./components/ExamplePicker";
+import { TaskInput, type TaskPreset } from "./components/TaskInput";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type { TaskRecord } from "./types";
 
@@ -14,6 +15,7 @@ export default function App(): JSX.Element {
   const [history, setHistory] = useState<TaskRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [preset, setPreset] = useState<TaskPreset | null>(null);
   const { agents, task, connected } = useWebSocket(taskId);
 
   const loadHistory = useCallback(async () => {
@@ -122,7 +124,11 @@ export default function App(): JSX.Element {
           </div>
           <div className="mb-5 h-px bg-borderline" />
 
-          <TaskInput onRun={runTask} loading={loading} error={apiError} />
+          <div className="mb-5">
+            <ExamplePicker onPick={(task, file) => setPreset({ task, file, nonce: Date.now() })} />
+          </div>
+
+          <TaskInput onRun={runTask} loading={loading} error={apiError} preset={preset} />
 
           <div className="mt-6 min-h-0 flex-1">
             <TaskHistory
@@ -139,7 +145,7 @@ export default function App(): JSX.Element {
         <main className="min-w-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto flex max-w-7xl flex-col gap-6">
             <AgentPipeline agents={agents} connected={connected} />
-            <ResultViewer task={selectedTask} />
+            <ResultViewer task={selectedTask} apiBase={API_BASE} />
           </div>
         </main>
       </div>

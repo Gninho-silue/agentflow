@@ -62,6 +62,21 @@ describe("TaskInput — task validation", () => {
   });
 });
 
+describe("TaskInput — example preset", () => {
+  it("fills the task and file from a preset and submits them", async () => {
+    const onRun = vi.fn().mockResolvedValue(undefined);
+    const file = makeFile("monthly_sales.csv");
+    const { rerender } = render(<TaskInput onRun={onRun} loading={false} error={null} preset={null} />);
+
+    rerender(<TaskInput onRun={onRun} loading={false} error={null} preset={{ task: "Analyze sales", file, nonce: 1 }} />);
+
+    expect(screen.getByPlaceholderText(/analyze a csv file/i)).toHaveValue("Analyze sales");
+    expect(screen.getByText("monthly_sales.csv")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /run agentflow/i }));
+    expect(onRun).toHaveBeenCalledWith("Analyze sales", file);
+  });
+});
+
 describe("TaskInput — upload", () => {
   it("accepts a CSV file, shows its name and sends it on submit", async () => {
     const { user, textarea, submit, fileInput, onRun } = setup();

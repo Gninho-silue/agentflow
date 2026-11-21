@@ -1,10 +1,18 @@
-import { ChangeEvent, DragEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Play, UploadCloud, X } from "lucide-react";
+
+/** Values pushed from outside (one-click examples). A new nonce re-applies them. */
+export interface TaskPreset {
+  task: string;
+  file: File | null;
+  nonce: number;
+}
 
 interface TaskInputProps {
   onRun: (task: string, file: File | null) => Promise<void>;
   loading: boolean;
   error: string | null;
+  preset?: TaskPreset | null;
 }
 
 const MAX_TASK_LENGTH = 2000;
@@ -28,12 +36,19 @@ function validateFile(f: File): string | null {
   return null;
 }
 
-export function TaskInput({ onRun, loading, error }: TaskInputProps): JSX.Element {
+export function TaskInput({ onRun, loading, error, preset = null }: TaskInputProps): JSX.Element {
   const [task, setTask] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!preset) return;
+    setTask(preset.task);
+    setFile(preset.file);
+    setValidationError(null);
+  }, [preset]);
 
   const charCount = task.length;
   const overLimit = charCount > MAX_TASK_LENGTH;

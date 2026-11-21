@@ -218,19 +218,26 @@ def _run_workflow(task_id: str) -> None:
         }
 
         final_state = initial_state
+        durations: dict[str, float] = {}
+        step_started = time.perf_counter()
         for chunk in workflow.stream(initial_state):
             node_name, state = next(iter(chunk.items()))
+            # Time spent in this node (nodes run one after another).
+            now = time.perf_counter()
+            duration = round(now - step_started, 3)
+            step_started = now
+            durations[node_name] = round(durations.get(node_name, 0.0) + duration, 3)
             final_state = state
             if node_name == "code_agent":
                 for attempt in state.get("code_attempts", []):
                     TASK_EVENTS.setdefault(task_id, []).append(_attempt_event(attempt))
-            TASK_EVENTS.setdefault(task_id, []).append(
-                _event(node_name, _latest_message(state.get("messages", [])), state.get("status", "running"))
-            )
+            event = _event(node_name, _latest_message(state.get("messages", [])), state.get("status", "running"))
+            event["duration"] = duration
+            TASK_EVENTS.setdefault(task_id, []).append(event)
 
         task.status = final_state["status"]
         task.error = final_state.get("error")
-        task.result = _serialize_state(final_state)
+        task.result = {**_serialize_state(final_state), "agent_durations": durations}
         task.agents_used = _agents_used(final_state)
         task.execution_time = round(time.perf_counter() - started_at, 3)
         task.updated_at = datetime.now(timezone.utc)
