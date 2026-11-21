@@ -39,7 +39,7 @@ Planner → FileAgent → CodeAgent → Reporter → Supervisor
 **AI / LLM**
 
 - Ollama (local, default) · `llama3.2:1b` — runs entirely on CPU, no GPU required
-- Groq (optional, for a hosted demo) · `llama-3.3-70b-versatile`
+- Groq (optional, for a hosted demo) · `openai/gpt-oss-120b`
 
 **DevOps**
 
@@ -69,7 +69,7 @@ environment variables:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `LLM_PROVIDER` | `ollama` | `ollama` (fully local) or `groq` (hosted API) |
-| `LLM_MODEL` | `llama3.2:1b` (ollama) / `llama-3.3-70b-versatile` (groq) | Model name for the chosen provider |
+| `LLM_MODEL` | `llama3.2:1b` (ollama) / `openai/gpt-oss-120b` (groq) | Model name for the chosen provider |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 | `GROQ_API_KEY` | — | Required when `LLM_PROVIDER=groq`; the app refuses to start without it |
 

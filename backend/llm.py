@@ -19,7 +19,7 @@ from langchain_core.language_models import BaseChatModel
 PROVIDERS = ("ollama", "groq")
 DEFAULT_MODELS = {
     "ollama": "llama3.2:1b",
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
 }
 
 
