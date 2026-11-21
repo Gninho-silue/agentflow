@@ -73,11 +73,17 @@
   - `_ensure_dataframe_setup` supprimé : le sandbox fournit déjà `df`.
 
 ## Étape 4 — Choix du fournisseur LLM (nécessaire pour le déploiement)
-- [ ] Une seule fabrique `get_llm()` (supprimer les `ChatOllama(model="llama3.2:1b")` par défaut dans chaque agent).
-- [ ] `LLM_PROVIDER=ollama|groq`, `LLM_MODEL=...` ; Ollama par défaut en local, Groq (`langchain-groq`) pour la démo en ligne.
-- [ ] Corriger l'incohérence : README et défaut du code doivent annoncer le **même** modèle.
-- [ ] Tests : sélection du fournisseur, erreur claire si `groq` sans `GROQ_API_KEY`.
-- [ ] Commit : `feat(llm): configurable provider (Ollama local, Groq for hosted demo)` → push.
+- [x] Une seule fabrique `get_llm()` (supprimer les `ChatOllama(model="llama3.2:1b")` par défaut dans chaque agent).
+- [x] `LLM_PROVIDER=ollama|groq`, `LLM_MODEL=...` ; Ollama par défaut en local, Groq (`langchain-groq`) pour la démo en ligne.
+- [x] Corriger l'incohérence : README et défaut du code doivent annoncer le **même** modèle.
+- [x] Tests : sélection du fournisseur, erreur claire si `groq` sans `GROQ_API_KEY`.
+- [x] Commit : `feat(llm): configurable provider (Ollama local, Groq for hosted demo)` → push.
+- Bilan : `backend/llm.py` (`get_llm()`), 9 tests écrits d'abord. Total backend : 91 tests.
+  - Modèle par défaut gardé : `llama3.2:1b` (celui qu'utilisait réellement le code) ; README, `.env.example` et docker-compose alignés dessus. Groq : `llama-3.3-70b-versatile`, température 0.
+  - `OLLAMA_MODEL` reste accepté (compatibilité) ; `OLLAMA_HOST` est maintenant réellement utilisé comme `base_url`.
+  - `groq` sans `GROQ_API_KEY` ou fournisseur inconnu → `LLMConfigError` explicite au démarrage (le workflow est construit à l'import).
+  - `langchain-groq==0.2.1` (compatible langchain-core 0.3).
+  - Remarque : sous Windows, en pleine suite, le test « boucle infinie < 10 s » a dépassé une fois (12 s) à cause du démarrage lent du sous-processus ; seul il prend environ 7 s, et sous Linux environ 6 s.
 
 ## Étape 5 — Démo utilisable par un visiteur
 - [ ] **3 exemples en un clic**, chacun avec un petit jeu de données fourni dans le repo (ex. ventes mensuelles CSV, catalogue produits JSON, avis clients TXT) : la tâche et le fichier se remplissent automatiquement. Un visiteur n'a pas de CSV sous la main.

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
+
+from backend.llm import get_llm
 
 from backend.graph.state import AgentState
 
@@ -13,10 +15,10 @@ from backend.graph.state import AgentState
 class ReporterAgent:
     """Aggregate workflow outputs into a clean markdown report."""
 
-    def __init__(self, llm: ChatOllama | None = None) -> None:
-        """Create a reporter that uses a local Ollama llama3.2 model."""
+    def __init__(self, llm: BaseChatModel | None = None) -> None:
+        """Create a reporter; the model comes from ``backend.llm.get_llm`` unless injected."""
 
-        self.llm = llm or ChatOllama(model="llama3.2:1b")
+        self.llm = llm or get_llm()
 
     def write_report(self, state: AgentState) -> str:
         """Use the LLM to write a final markdown report from AgentState."""

@@ -6,8 +6,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
+
+from backend.llm import get_llm
 
 from backend.sandbox import SandboxResult
 from backend.tools.code_executor import CodeExecutor
@@ -38,10 +40,10 @@ MAX_ATTEMPTS = 3
 class CodeAgent:
     """Generate Python code with the LLM and run it in an isolated sandbox."""
 
-    def __init__(self, llm: ChatOllama | None = None, executor: CodeExecutor | None = None) -> None:
-        """Create a code agent that uses a local Ollama llama3.2 model."""
+    def __init__(self, llm: BaseChatModel | None = None, executor: CodeExecutor | None = None) -> None:
+        """Create a code agent; the model comes from ``backend.llm.get_llm`` unless injected."""
 
-        self.llm = llm or ChatOllama(model="llama3.2:1b")
+        self.llm = llm or get_llm()
         self.executor = executor or CodeExecutor()
 
     def run(

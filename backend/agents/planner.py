@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
+
+from backend.llm import get_llm
 
 
 class PlannerAgent:
     """Plan an AgentFlow task and choose the agents needed to complete it."""
 
-    def __init__(self, llm: ChatOllama | None = None) -> None:
-        """Create a planner that uses a local Ollama llama3.2 model."""
+    def __init__(self, llm: BaseChatModel | None = None) -> None:
+        """Create a planner; the model comes from ``backend.llm.get_llm`` unless injected."""
 
-        self.llm = llm or ChatOllama(model="llama3.2:1b")
+        self.llm = llm or get_llm()
 
     def plan(self, task: str) -> dict[str, list[str]]:
         """Return subtasks, required agents, and execution order for a task."""

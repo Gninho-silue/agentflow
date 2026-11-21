@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
 
 from backend.agents.code_agent import CodeAgent
@@ -15,19 +13,18 @@ from backend.agents.file_agent import FileAgent
 from backend.agents.planner import PlannerAgent
 from backend.agents.reporter import ReporterAgent
 from backend.graph.state import AgentState
-
-
-LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
+from backend.llm import get_llm
 
 
 def create_workflow(llm: BaseChatModel | None = None) -> Any:
     """Build and compile the AgentFlow StateGraph.
 
     ``llm`` can be injected (tests pass a scripted fake model); it defaults to
-    the local Ollama model.
+    the provider configured by the environment
+    (``backend.llm.get_llm``).
     """
 
-    llm = llm or ChatOllama(model=LLM_MODEL)
+    llm = llm or get_llm()
     planner = PlannerAgent(llm=llm)
     file_agent = FileAgent()
     code_agent = CodeAgent(llm=llm)

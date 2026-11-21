@@ -38,7 +38,8 @@ Planner → FileAgent → CodeAgent → Reporter → Supervisor
 
 **AI / LLM**
 
-- Ollama (local) · Llama 3.2 3B — runs entirely on CPU, no GPU required
+- Ollama (local, default) · `llama3.2:1b` — runs entirely on CPU, no GPU required
+- Groq (optional, for a hosted demo) · `llama-3.3-70b-versatile`
 
 **DevOps**
 
@@ -57,8 +58,22 @@ Planner → FileAgent → CodeAgent → Reporter → Supervisor
 ### 1. Pull the LLM model
 
 ```bash
-ollama pull llama3.2
+ollama pull llama3.2:1b
 ```
+
+### Choosing the LLM provider
+
+All agents get their model from one factory (`backend/llm.py`), configured by
+environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `ollama` | `ollama` (fully local) or `groq` (hosted API) |
+| `LLM_MODEL` | `llama3.2:1b` (ollama) / `llama-3.3-70b-versatile` (groq) | Model name for the chosen provider |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `GROQ_API_KEY` | — | Required when `LLM_PROVIDER=groq`; the app refuses to start without it |
+
+Keep `GROQ_API_KEY` in your shell or your host's secret settings; never commit it.
 
 ### 2. Clone the repository
 
@@ -201,8 +216,8 @@ agentflow/
 ## ⚡ Performance Notes
 
 - Runs on **CPU only** — no GPU required
-- Average execution time: ~8–15 min on a 2-core CPU with Llama 3.2 3B
-- For faster results: use `llama3.2:1b` (lighter model) or run on a machine with more RAM
+- Execution time depends heavily on the CPU and the model: the default `llama3.2:1b` is the lightest; a larger model such as `llama3.2:3b` (`LLM_MODEL=llama3.2:3b`) gives better plans and code but is several times slower on CPU
+- With `LLM_PROVIDER=groq` the LLM runs on Groq's servers, so a task takes seconds instead of minutes
 
 ---
 
