@@ -69,3 +69,29 @@ page says so.
   which case Render restarts the service.
 - If rate limiting ever applies to everyone at once, Render's proxy chain has
   changed: set `TRUSTED_PROXY_HOPS` to the number of proxies in front of the app.
+
+## Continuous deployment (after CI)
+
+Production deploys run from [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml),
+only when the **CI** workflow succeeded on `main`:
+
+1. **Backend**: calls the Render deploy hook (`autoDeployTrigger: off` in `render.yaml`,
+   so Render never deploys a commit on its own).
+2. **Frontend**: Vercel CLI build and production deploy (`git.deploymentEnabled.main = false`
+   in `frontend/vercel.json`; preview deploys for other branches stay on).
+3. **Smoke test** ([`scripts/smoke_test.py`](../scripts/smoke_test.py)): waits until
+   `/health/ready` reports the new commit, runs one real task through the API, checks
+   the frontend. A failure turns the run red.
+
+It needs four repository secrets (GitHub → Settings → Secrets and variables → Actions).
+You create and paste them yourself:
+
+| Secret | Where to find it |
+| --- | --- |
+| `RENDER_DEPLOY_HOOK_URL` | Render → `agentflow-api` → Settings → Deploy Hook |
+| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens → Create |
+| `VERCEL_ORG_ID` | Vercel → Team (or account) Settings → General → ID |
+| `VERCEL_PROJECT_ID` | Vercel → project → Settings → General → Project ID |
+
+The deploy hook URL contains a secret key: keep it only in GitHub secrets. To deploy
+without a new commit: Actions → Deploy → **Run workflow**.

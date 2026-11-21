@@ -1,0 +1,84 @@
+name: Deploy
+
+# Continuous deployment: runs only after CI succeeded on main.
+# Order: backend (Render deploy hook) -> frontend (Vercel) -> production smoke test.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  API_URL: https://agentflow-api-3tu5.onrender.com
+  WEB_URL: https://agentflow-alpha-azure.vercel.app
+  COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  backend:
+    name: Backend (Render)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Render deploy hook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL is missing (see docs/DEPLOY.md, section CD)."
+            exit 1
+          fi
+          curl --fail --silent --show-error -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
+          echo "Render deploy started for $COMMIT."
+
+  frontend:
+    name: Frontend (Vercel)
+    needs: backend
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check Vercel secrets
+        run: |
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is missing (see docs/DEPLOY.md, section CD)."
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.COMMIT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Pull Vercel project settings
+        run: npx --yes vercel@39.1.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build
+        run: npx --yes vercel@39.1.1 build --prod --token="$VERCEL_TOKEN"
+      - name: Deploy to production
+        run: npx --yes vercel@39.1.1 deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  smoke:
+    name: Production smoke test
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.COMMIT }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Wait for the new backend, run a real task, check the frontend
+        run: python scripts/smoke_test.py --api "$API_URL" --web "$WEB_URL" --commit "$COMMIT"

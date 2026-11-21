@@ -150,6 +150,9 @@ def test_render_blueprint_is_safe_and_complete() -> None:
     assert service["dockerContext"] == "."
     assert service["healthCheckPath"] == "/health"
     assert service["plan"] == "free"
+    # Continuous deployment is driven by the deploy workflow (after CI), not by Render.
+    assert service["autoDeployTrigger"] == "off"
+    assert "autoDeploy" not in service
 
     assert env["LLM_PROVIDER"]["value"] == "groq"
     # Secrets are never written in the repo: filled in the Render dashboard.

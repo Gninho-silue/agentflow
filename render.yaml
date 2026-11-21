@@ -9,7 +9,9 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    autoDeploy: true
+    # Deploys are triggered by .github/workflows/deploy.yml (deploy hook) once CI
+    # has passed, followed by a production smoke test.
+    autoDeployTrigger: "off"
     envVars:
       - key: PORT
         value: "8000"

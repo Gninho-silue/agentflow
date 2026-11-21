@@ -144,7 +144,12 @@ async def readiness() -> JSONResponse:
     ready = all(check["ok"] for check in checks.values())
     return JSONResponse(
         status_code=200 if ready else 503,
-        content={"status": "ready" if ready else "degraded", "checks": checks},
+        content={
+            "status": "ready" if ready else "degraded",
+            # Render sets RENDER_GIT_COMMIT: the CD smoke test waits for its own commit.
+            "version": os.getenv("RENDER_GIT_COMMIT") or "dev",
+            "checks": checks,
+        },
     )
 
 

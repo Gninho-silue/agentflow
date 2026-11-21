@@ -214,3 +214,10 @@ def test_readiness_is_degraded_without_llm(client: TestClient, monkeypatch: pyte
 
 def test_liveness_stays_minimal(client: TestClient) -> None:
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_readiness_reports_the_deployed_commit(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abc123")
+    assert client.get("/health/ready").json()["version"] == "abc123"
+    monkeypatch.delenv("RENDER_GIT_COMMIT")
+    assert client.get("/health/ready").json()["version"] == "dev"
