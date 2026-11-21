@@ -82,3 +82,23 @@ def test_frontend_check_looks_for_the_app_shell() -> None:
 
 def test_payloads_are_json(monkeypatch: pytest.MonkeyPatch) -> None:
     assert json.loads(json.dumps(smoke_test.TASK))["task"]
+
+
+def test_frontend_bundle_must_point_at_the_api() -> None:
+    page = '<html><title>AgentFlow · x</title><div id="root"></div><script type="module" src="/assets/index-abc.js"></script>'
+    good = FakeHttp(
+        {
+            ("GET", "/"): [(200, page)],
+            ("GET", "/assets/index-abc.js"): [(200, 'const a="https://api.example.com";')],
+        }
+    )
+    smoke_test.check_frontend("https://web", http=good, api="https://api.example.com")
+
+    broken = FakeHttp(
+        {
+            ("GET", "/"): [(200, page)],
+            ("GET", "/assets/index-abc.js"): [(200, 'const a="[SENSITIVE]";')],
+        }
+    )
+    with pytest.raises(smoke_test.SmokeTestError, match="does not point at https://api.example.com"):
+        smoke_test.check_frontend("https://web", http=broken, api="https://api.example.com")

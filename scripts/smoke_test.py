@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -87,11 +88,19 @@ def run_task(api: str, http: Http = http, timeout: float = 300, interval: float 
         time.sleep(interval)
 
 
-def check_frontend(web: str, http: Http = http) -> None:
+def check_frontend(web: str, http: Http = http, api: str | None = None) -> None:
     status, page = http("GET", f"{web}/")
     if status != 200 or not isinstance(page, str) or "<title>AgentFlow" not in page or 'id="root"' not in page:
         raise SmokeTestError(f"Frontend did not serve the app shell: {status}")
-    print("Frontend serves the app shell.")
+    if api:
+        # The API URL is baked into the bundle at build time: make sure it is the real one.
+        match = re.search(r'src="(/assets/[^"]+\.js)"', page)
+        if not match:
+            raise SmokeTestError("Frontend page has no JavaScript bundle.")
+        _, bundle = http("GET", f"{web}{match.group(1)}")
+        if not isinstance(bundle, str) or api not in bundle:
+            raise SmokeTestError(f"Frontend bundle does not point at {api} (check VITE_API_BASE_URL).")
+    print("Frontend serves the app shell" + (f" built for {api}." if api else "."))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         wait_for_version(api, args.commit)
         run_task(api)
-        check_frontend(web)
+        check_frontend(web, api=api)
     except SmokeTestError as exc:
         print(f"::error::{exc}")
         return 1
