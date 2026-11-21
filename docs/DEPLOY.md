@@ -72,19 +72,25 @@ page says so.
 
 ## Continuous deployment (after CI)
 
-Backend deploys run from [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml),
+Production deploys run from [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml),
 only when the **CI** workflow succeeded on `main`:
 
 1. **Backend**: calls the Render deploy hook (`autoDeployTrigger: off` in `render.yaml`,
    so Render never deploys a commit on its own).
-2. **Smoke test** ([`scripts/smoke_test.py`](../scripts/smoke_test.py)): waits until
+2. **Frontend**: Vercel CLI build and production deploy (`git.deploymentEnabled.main = false`
+   in `frontend/vercel.json`; preview deploys for other branches stay on).
+3. **Smoke test** ([`scripts/smoke_test.py`](../scripts/smoke_test.py)): waits until
    `/health/ready` reports the new commit, runs one real task through the API, checks
    the frontend. A failure turns the run red.
 
-The **frontend** is deployed by Vercel's Git integration on every push to `main`
-(previews for other branches), so it does not wait for CI.
+Four repository secrets (GitHub → Settings → Secrets and variables → Actions):
 
-One repository secret is needed (GitHub → Settings → Secrets and variables → Actions):
-`RENDER_DEPLOY_HOOK_URL`, from Render → `agentflow-api` → Settings → Deploy Hook. It
-contains a secret key: keep it only in GitHub secrets. To deploy without a new
-commit: Actions → Deploy → **Run workflow**.
+| Secret | Where to find it |
+| --- | --- |
+| `RENDER_DEPLOY_HOOK_URL` | Render → `agentflow-api` → Settings → Deploy Hook |
+| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens (scope: the team that owns the project) |
+| `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | Run `npx vercel@latest login` then `npx vercel@latest link` in an empty folder: `.vercel/project.json` holds `orgId` and `projectId` |
+
+The workflow pins the Vercel CLI version; Vercel retires old versions (39.x was refused
+with HTTP 410), so bump it when a deploy fails at "Pull Vercel project settings". To
+deploy without a new commit: Actions → Deploy → **Run workflow**.
