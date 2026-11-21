@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from backend.database import SessionLocal, get_db
 from backend.graph.state import AgentState
 from backend.graph.workflow import workflow
+from backend.llm import check_llm
 from backend.models.task import Task
 
 
@@ -109,7 +110,7 @@ async def execute_task(
     task.status = "running"
     task.updated_at = datetime.now(timezone.utc)
     db.commit()
-    TASK_EVENTS.setdefault(task_id, []).append(_event("supervisor", "Workflow queued.", "running"))
+    TASK_EVENTS.setdefault(task_id, []).append(_event("supervisor", "Workflow queued.", "queued"))
     background_tasks.add_task(_run_workflow, task_id)
     return {"task_id": task_id, "status": "running"}
 
@@ -199,6 +200,20 @@ def _run_workflow(task_id: str) -> None:
     started_at = time.perf_counter()
     try:
         task = _get_task_model(task_id, db)
+
+        # Fail fast with an actionable message instead of running every agent
+        # on its offline fallback when the model cannot be reached.
+        llm_problem = check_llm()
+        if llm_problem:
+            message = f"The language model is unavailable. {llm_problem}"
+            task.status = "error"
+            task.error = message
+            task.execution_time = round(time.perf_counter() - started_at, 3)
+            task.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            TASK_EVENTS.setdefault(task_id, []).append(_event("planner", message, "error"))
+            return
+
         initial_state: AgentState = {
             "task": task.task,
             "subtasks": [],

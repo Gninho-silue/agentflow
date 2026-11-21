@@ -116,14 +116,15 @@ export function TaskInput({ onRun, loading, error, preset = null }: TaskInputPro
     <form onSubmit={submit} className="flex flex-col gap-4">
       <div className="relative">
         <textarea
+          aria-label="Task description"
           value={task}
           onChange={(event) => setTask(event.target.value)}
           placeholder="Analyze a CSV file and generate a report..."
-          className="min-h-40 w-full resize-none rounded-xl border-0 bg-panel p-4 pb-7 text-[13px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 ring-1 ring-transparent transition-all duration-200 focus:ring-indigo-500/40"
+          className="min-h-40 w-full resize-none rounded-xl border-0 bg-surface p-4 pb-7 text-[14px] leading-6 text-ink outline-none placeholder:text-ink-faint ring-1 ring-transparent transition-all duration-200 focus:ring-accent/60"
         />
         <span
           className={`pointer-events-none absolute bottom-2.5 right-3 text-[11px] tabular-nums ${
-            overLimit ? "text-red-400" : "text-slate-500"
+            overLimit ? "text-bad" : "text-ink-faint"
           }`}
         >
           {charCount} / {MAX_TASK_LENGTH}
@@ -131,7 +132,7 @@ export function TaskInput({ onRun, loading, error, preset = null }: TaskInputPro
       </div>
 
       {displayError ? (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs leading-5 text-red-300">
+        <div className="rounded-xl border border-bad/30 bg-bad/10 p-3 text-xs leading-5 text-bad">
           {displayError}
         </div>
       ) : null}
@@ -144,22 +145,22 @@ export function TaskInput({ onRun, loading, error, preset = null }: TaskInputPro
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={dropFile}
-        className={`flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed p-4 text-center transition-all duration-200 ${
-          dragging ? "border-indigo-500/40 bg-white/[0.03]" : "border-borderline hover:border-indigo-500/40"
+        className={`flex min-h-28 cursor-pointer flex-col focus-within:border-accent focus-within:outline focus-within:outline-2 focus-within:outline-accent items-center justify-center rounded-xl border border-dashed p-4 text-center transition-all duration-200 ${
+          dragging ? "border-accent/60 bg-raised" : "border-line hover:border-accent/60"
         }`}
       >
-        <input ref={inputRef} className="hidden" type="file" accept=".csv,.json,.txt" aria-label="Upload CSV, JSON, or TXT file" onChange={selectFile} />
-        <UploadCloud className="mb-2 h-5 w-5 text-slate-400" aria-hidden="true" />
+        <input ref={inputRef} className="sr-only" type="file" accept=".csv,.json,.txt" aria-label="Upload CSV, JSON, or TXT file" onChange={selectFile} />
+        <UploadCloud className="mb-2 h-5 w-5 text-ink-soft" aria-hidden="true" />
         {file ? (
           <div className="flex max-w-full items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-slate-200">{file.name}</span>
+            <span className="truncate text-[13px] font-medium text-ink">{file.name}</span>
             <button
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
                 removeFile();
               }}
-              className="rounded-md p-1 text-slate-500 transition-all duration-200 hover:bg-white/5 hover:text-slate-200"
+              className="rounded-md p-1 text-ink-faint transition-all duration-200 hover:bg-raised hover:text-ink"
               aria-label="Remove file"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -167,8 +168,8 @@ export function TaskInput({ onRun, loading, error, preset = null }: TaskInputPro
           </div>
         ) : (
           <>
-            <span className="text-[13px] text-slate-300">Upload CSV, JSON, or TXT</span>
-            <span className="mt-1 text-xs text-slate-500">Drop file here or click to browse</span>
+            <span className="text-[13px] text-ink-soft">Upload CSV, JSON, or TXT</span>
+            <span className="mt-1 text-xs text-ink-faint">Drop file here or click to browse</span>
           </>
         )}
       </div>
@@ -176,9 +177,9 @@ export function TaskInput({ onRun, loading, error, preset = null }: TaskInputPro
       <button
         type="submit"
         disabled={!canSubmit}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-[13px] font-medium text-white transition-all duration-200 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-[13px] font-medium text-on-accent transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-raised disabled:text-ink-faint"
       >
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
+        {loading ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" /> : <Play className="h-4 w-4" aria-hidden="true" />}
         {loading ? "Running..." : "Run AgentFlow"}
       </button>
     </form>

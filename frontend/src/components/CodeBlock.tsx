@@ -15,7 +15,7 @@ export function CodeBlock({ code, language = "python" }: CodeBlockProps): JSX.El
     <SyntaxHighlighter
       language={language}
       style={oneDark}
-      customStyle={{ margin: 0, borderRadius: "0.5rem", fontSize: "12.5px", background: "#020617" }}
+      customStyle={{ margin: 0, borderRadius: "0.5rem", fontSize: "12.5px", background: "#0d1117", border: "1px solid #262f3b" }}
       wrapLongLines
     >
       {code}

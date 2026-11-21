@@ -1,18 +1,10 @@
-import { Brain, CheckCircle2, Circle, FileOutput, FileText, Loader2, ShieldCheck, Terminal, XCircle } from "lucide-react";
+import { Check, Loader2, Minus, X } from "lucide-react";
 import type { AgentName, AgentProgress, AgentStatus } from "../types";
 
 interface AgentPipelineProps {
   agents: AgentProgress[];
   connected: boolean;
 }
-
-const icons: Record<AgentName, typeof Brain> = {
-  planner: Brain,
-  file_agent: FileText,
-  code_agent: Terminal,
-  reporter: FileOutput,
-  supervisor: ShieldCheck,
-};
 
 const labels: Record<AgentName, string> = {
   planner: "Planner",
@@ -22,48 +14,108 @@ const labels: Record<AgentName, string> = {
   supervisor: "Supervisor",
 };
 
+const stateText: Record<AgentStatus, string> = {
+  idle: "Waiting",
+  running: "Running",
+  done: "Done",
+  error: "Failed",
+  skipped: "Skipped",
+};
+
+const stateColor: Record<AgentStatus, string> = {
+  idle: "text-ink-faint",
+  running: "text-accent",
+  done: "text-ok",
+  error: "text-bad",
+  skipped: "text-ink-faint",
+};
+
+function summary(agents: AgentProgress[], connected: boolean): string {
+  if (agents.some((agent) => agent.status === "error")) return "Stopped on an error";
+  if (connected || agents.some((agent) => agent.status === "running")) return "Running";
+  if (agents.every((agent) => agent.status === "done" || agent.status === "skipped")) return "Finished";
+  return "Waiting for a task";
+}
+
 export function AgentPipeline({ agents, connected }: AgentPipelineProps): JSX.Element {
   return (
-    <section className="rounded-xl border border-borderline bg-panel/70 p-5 backdrop-blur-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-[13px] font-semibold uppercase tracking-widest text-slate-400">Pipeline</h2>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span className={`h-1.5 w-1.5 rounded-full ${connected ? "animate-pulse bg-indigo-500" : "bg-slate-600"}`} />
-          {connected ? "Live" : "Idle"}
-        </div>
+    <section aria-labelledby="pipeline-title" className="rounded-xl border border-line bg-surface p-5">
+      <div className="mb-5 flex items-baseline justify-between gap-3">
+        <h2 id="pipeline-title" className="text-[15px] font-semibold text-ink">
+          Pipeline
+        </h2>
+        <p className="text-xs text-ink-soft" aria-live="polite">
+          {summary(agents, connected)}
+        </p>
       </div>
 
-      <div className="flex items-stretch gap-3 overflow-x-auto">
+      {/* A real sequence: vertical track on small screens, horizontal from lg. */}
+      <ol aria-label="Agent pipeline" className="grid gap-0 lg:grid-cols-5 lg:gap-3">
         {agents.map((agent, index) => {
-          const Icon = icons[agent.agent];
+          const last = index === agents.length - 1;
+          const reached = agent.status === "done" || agent.status === "skipped";
           return (
-            <div key={agent.agent} className="flex min-w-[150px] flex-1 items-center gap-3">
-              <article className="min-h-32 min-w-0 flex-1 rounded-xl border border-borderline bg-panel p-4 transition-all duration-200">
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <Icon className="h-5 w-5 text-slate-300" aria-hidden="true" />
-                  <StatusIcon status={agent.status} />
+            <li
+              key={agent.agent}
+              aria-current={agent.status === "running" ? "step" : undefined}
+              className="relative flex gap-3 pb-5 last:pb-0 lg:flex-col lg:gap-3 lg:pb-0"
+            >
+              {!last ? (
+                <span
+                  aria-hidden="true"
+                  className={`absolute left-[13px] top-8 h-[calc(100%-2rem)] w-px lg:left-8 lg:top-[13px] lg:h-px lg:w-[calc(100%-1.25rem)] ${
+                    reached ? "bg-accent" : "bg-line"
+                  }`}
+                />
+              ) : null}
+              <StepMarker status={agent.status} number={index + 1} />
+              <div className="min-w-0 pt-0.5 lg:pt-0">
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-[13px] font-medium text-ink">{labels[agent.agent]}</h3>
+                  <span className={`font-mono text-[11px] ${stateColor[agent.status]}`}>{stateText[agent.status]}</span>
                 </div>
-                <h3 className="truncate text-[13px] font-medium text-slate-100">{labels[agent.agent]}</h3>
-                <p className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-400">{agent.message}</p>
-              </article>
-              {index < agents.length - 1 ? <div className="hidden h-px w-5 shrink-0 border-t border-dashed border-borderline xl:block" /> : null}
-            </div>
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-ink-soft" title={agent.message}>
+                  {agent.message}
+                </p>
+              </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
     </section>
   );
 }
 
-function StatusIcon({ status }: { status: AgentStatus }): JSX.Element {
+function StepMarker({ status, number }: { status: AgentStatus; number: number }): JSX.Element {
+  const base = "relative z-10 grid h-7 w-7 shrink-0 place-items-center rounded-full border text-xs";
   if (status === "running") {
-    return <Loader2 className="h-4 w-4 animate-spin text-indigo-400" aria-label="running" />;
+    return (
+      <span className={`${base} border-accent bg-canvas text-accent`}>
+        <span aria-hidden="true" className="absolute inset-0 rounded-full ring-2 ring-accent/40 motion-safe:animate-ping" />
+        <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" />
+      </span>
+    );
   }
   if (status === "done") {
-    return <CheckCircle2 className="h-4 w-4 text-emerald-400" aria-label="done" />;
+    return (
+      <span className={`${base} border-accent bg-accent text-on-accent`}>
+        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    );
   }
   if (status === "error") {
-    return <XCircle className="h-4 w-4 text-red-400" aria-label="error" />;
+    return (
+      <span className={`${base} border-bad bg-canvas text-bad`}>
+        <X className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    );
   }
-  return <Circle className="h-4 w-4 text-slate-600" aria-label="idle" />;
+  if (status === "skipped") {
+    return (
+      <span className={`${base} border-dashed border-line-strong bg-canvas text-ink-faint`}>
+        <Minus className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+    );
+  }
+  return <span className={`${base} border-line-strong bg-canvas font-mono text-ink-faint`}>{number}</span>;
 }

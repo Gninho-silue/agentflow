@@ -49,12 +49,8 @@ export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element 
   const finalCode = attempts.length ? attempts[attempts.length - 1].code : null;
   const showAttempts = attempts.length > 1 || attempts.some((attempt) => attempt.error);
   const durations = Object.entries(task.result?.agent_durations ?? {});
-  const metadata = [
-    task.execution_time ? `${task.execution_time}s` : null,
-    task.agents_used?.length ? task.agents_used.join(" → ") : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // The per-agent durations below already list the agents that ran.
+  const metadata = task.execution_time ? `Ran in ${task.execution_time.toFixed(1)}s` : null;
 
   const downloadReport = () => {
     if (!report) {
@@ -81,15 +77,15 @@ export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element 
   };
 
   const buttonClass =
-    "flex items-center gap-2 rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-xs font-medium text-slate-300 transition-all duration-200 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50";
+    "flex items-center gap-2 rounded-lg border border-line-strong bg-transparent px-3 py-2 text-xs font-medium text-ink-soft transition-all duration-200 hover:border-ink-faint disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <section className="rounded-xl border border-borderline bg-panel/70 p-5 backdrop-blur-sm">
+    <section className="rounded-xl border border-line bg-surface p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-3">
-            <h2 className="text-base font-semibold text-slate-100">Result</h2>
-            {metadata ? <p className="text-xs text-slate-400">{metadata}</p> : null}
+            <h2 className="text-base font-semibold text-ink">Result</h2>
+            {metadata ? <p className="font-mono text-xs text-ink-soft">{metadata}</p> : null}
           </div>
         </div>
         <div className="flex gap-2">
@@ -107,8 +103,8 @@ export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element 
       {durations.length ? (
         <ul aria-label="Duration per agent" className="mb-4 flex flex-wrap gap-2">
           {durations.map(([agent, seconds]) => (
-            <li key={agent} className="flex items-center gap-1.5 rounded-md bg-white/5 px-2 py-1 text-[11px] text-slate-400">
-              <span className="text-slate-300">{AGENT_LABELS[agent] ?? agent}</span>
+            <li key={agent} className="flex items-center gap-1.5 rounded-md bg-raised px-2 py-1 text-[11px] text-ink-soft">
+              <span className="text-ink-soft">{AGENT_LABELS[agent] ?? agent}</span>
               <span className="font-mono tabular-nums">{formatSeconds(seconds)}</span>
             </li>
           ))}
@@ -116,11 +112,11 @@ export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element 
       ) : null}
 
       {task.status === "error" ? (
-        <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{task.error}</div>
+        <div className="mb-4 rounded-xl border border-bad/30 bg-bad/10 p-4 text-sm text-bad">{task.error}</div>
       ) : null}
 
       {report ? (
-        <div className="rounded-xl border border-borderline bg-panel p-6">
+        <div className="rounded-xl border border-line bg-surface p-6">
           <ReactMarkdown rehypePlugins={[rehypeRaw]} remarkPlugins={[remarkGfm]} components={components}>
             {report}
           </ReactMarkdown>
@@ -129,23 +125,23 @@ export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element 
 
       {showAttempts ? (
         <div className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold text-slate-200">Self-correction</h3>
+          <h3 className="mb-2 text-sm font-semibold text-ink">Self-correction</h3>
           <ol aria-label="Code attempts" className="flex flex-col gap-2">
             {attempts.map((attempt) => (
-              <li key={attempt.attempt} className="rounded-lg border border-borderline p-3">
+              <li key={attempt.attempt} className="rounded-lg border border-line p-3">
                 <div className="flex items-center gap-2 text-[13px]">
                   {attempt.error ? (
-                    <CircleAlert className="h-4 w-4 text-red-400" aria-hidden="true" />
+                    <CircleAlert className="h-4 w-4 text-bad" aria-hidden="true" />
                   ) : (
-                    <CircleCheck className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                    <CircleCheck className="h-4 w-4 text-ok" aria-hidden="true" />
                   )}
-                  <span className="font-medium text-slate-200">Attempt {attempt.attempt}</span>
-                  <span className={attempt.error ? "text-red-300" : "text-emerald-300"}>
+                  <span className="font-medium text-ink">Attempt {attempt.attempt}</span>
+                  <span className={attempt.error ? "text-bad" : "text-ok"}>
                     {attempt.error ? `failed: ${attempt.error}` : "succeeded"}
                   </span>
                 </div>
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-slate-400">Code{attempt.traceback ? " and traceback" : ""}</summary>
+                  <summary className="cursor-pointer text-xs text-ink-soft">Code{attempt.traceback ? " and traceback" : ""}</summary>
                   <div className="mt-2 flex flex-col gap-2">
                     <CodeBlock code={attempt.code} />
                     {attempt.traceback ? <CodeBlock code={attempt.traceback} language="text" /> : null}
@@ -158,8 +154,8 @@ export function ResultViewer({ task, apiBase }: ResultViewerProps): JSX.Element 
       ) : null}
 
       {finalCode ? (
-        <details className="mt-4 rounded-lg border border-borderline p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-200">Generated code</summary>
+        <details className="mt-4 rounded-lg border border-line p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-ink">Generated code</summary>
           <div className="mt-3">
             <CodeBlock code={finalCode} />
           </div>
@@ -173,53 +169,53 @@ function markdownComponents(apiBase: string): Components {
   const base = apiBase.replace(/\/+$/, "");
   return {
     h1({ children }) {
-      return <h1 className="mb-4 mt-1 text-2xl font-semibold text-slate-100">{children}</h1>;
+      return <h1 className="mb-4 mt-1 text-2xl font-semibold text-ink">{children}</h1>;
     },
     h2({ children }) {
-      return <h2 className="mb-3 mt-6 text-xl font-semibold text-slate-100">{children}</h2>;
+      return <h2 className="mb-3 mt-6 text-xl font-semibold text-ink">{children}</h2>;
     },
     h3({ children }) {
-      return <h3 className="mb-2 mt-5 text-base font-semibold text-slate-100">{children}</h3>;
+      return <h3 className="mb-2 mt-5 text-base font-semibold text-ink">{children}</h3>;
     },
     p({ children }) {
-      return <p className="mb-4 text-sm leading-7 text-slate-300">{children}</p>;
+      return <p className="mb-4 text-sm leading-7 text-ink-soft">{children}</p>;
     },
     ul({ children }) {
-      return <ul className="mb-4 list-disc space-y-2 pl-4 text-sm text-slate-300">{children}</ul>;
+      return <ul className="mb-4 list-disc space-y-2 pl-4 text-sm text-ink-soft">{children}</ul>;
     },
     ol({ children }) {
-      return <ol className="mb-4 list-decimal space-y-2 pl-4 text-sm text-slate-300">{children}</ol>;
+      return <ol className="mb-4 list-decimal space-y-2 pl-4 text-sm text-ink-soft">{children}</ol>;
     },
     li({ children }) {
       return <li className="leading-6">{children}</li>;
     },
     table({ children }) {
       return (
-        <div className="mb-5 overflow-x-auto rounded-lg border border-borderline">
-          <table className="w-full border-collapse text-left text-sm text-slate-300">{children}</table>
+        <div className="mb-5 overflow-x-auto rounded-lg border border-line">
+          <table className="w-full border-collapse text-left text-sm text-ink-soft">{children}</table>
         </div>
       );
     },
     thead({ children }) {
-      return <thead className="bg-white/5 text-slate-100">{children}</thead>;
+      return <thead className="bg-raised text-ink">{children}</thead>;
     },
     th({ children }) {
-      return <th className="border-b border-borderline px-3 py-2 font-medium">{children}</th>;
+      return <th className="border-b border-line px-3 py-2 font-medium">{children}</th>;
     },
     td({ children }) {
-      return <td className="border-b border-borderline px-3 py-2 last:border-b-0">{children}</td>;
+      return <td className="border-b border-line px-3 py-2 last:border-b-0">{children}</td>;
     },
     // Fenced blocks: the <pre> carries the block style and resets the inline <code> style.
     pre({ children }) {
       return (
-        <pre className="mb-5 overflow-x-auto rounded-lg bg-[#020617] p-4 font-mono text-[13px] leading-6 text-emerald-400 [&_code]:bg-transparent [&_code]:p-0">
+        <pre className="mb-5 overflow-x-auto rounded-lg bg-canvas p-4 font-mono text-[13px] leading-6 text-ok [&_code]:bg-transparent [&_code]:p-0">
           {children}
         </pre>
       );
     },
     code({ children, className }) {
       return (
-        <code className={`rounded bg-slate-950 px-1.5 py-0.5 font-mono text-[13px] text-emerald-400 ${className ?? ""}`}>
+        <code className={`rounded bg-canvas px-1.5 py-0.5 font-mono text-[13px] text-ok ${className ?? ""}`}>
           {children}
         </code>
       );

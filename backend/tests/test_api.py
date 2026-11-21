@@ -120,6 +120,24 @@ def test_duration_per_agent_is_recorded(client: TestClient) -> None:
     assert all(isinstance(e["duration"], float) for e in node_updates)
 
 
+def test_unavailable_llm_fails_fast_with_clear_message(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class MustNotRun:
+        def stream(self, _state: object) -> object:
+            raise AssertionError("workflow should not start without an LLM")
+
+    monkeypatch.setattr(routes, "workflow", MustNotRun())
+    monkeypatch.setattr(routes, "check_llm", lambda: "Ollama is not reachable at http://x.")
+    task_id = create(client)
+    client.post(f"/api/tasks/{task_id}/execute")
+
+    status = client.get(f"/api/tasks/{task_id}/status").json()
+    assert status["status"] == "error"
+    assert status["error"] == "The language model is unavailable. Ollama is not reachable at http://x."
+    assert routes.TASK_EVENTS[task_id][-1]["status"] == "error"
+
+
 def test_execute_unknown_task_returns_404(client: TestClient) -> None:
     assert client.post("/api/tasks/does-not-exist/execute").status_code == 404
 

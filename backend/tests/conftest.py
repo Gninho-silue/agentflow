@@ -66,6 +66,7 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator["TestCli
         create_workflow(llm=fake_llm(PLAN_WITHOUT_FILE, "print(6 * 7)", REPORT)),
     )
     monkeypatch.setattr(main, "init_db", lambda: None)
+    monkeypatch.setattr(routes, "check_llm", lambda: None)  # never probe a real LLM
     main.app.dependency_overrides[get_db] = override_get_db
     main._rate_timestamps.clear()
     routes.TASK_EVENTS.clear()

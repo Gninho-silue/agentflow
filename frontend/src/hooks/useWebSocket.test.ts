@@ -107,17 +107,26 @@ describe("useWebSocket", () => {
     expect(result.current.agents[0]).toMatchObject({ agent: "planner", status: "idle", message: "Task created." });
   });
 
-  it("marks every agent done when the task completes", () => {
+  it("marks agents that ran as done and the others as skipped when the task completes", () => {
     const { result } = renderHook(() => useWebSocket("t1"));
     const socket = latestSocket();
     socket.open();
 
     socket.receive(update("planner", "running"));
+    socket.receive(update("code_agent", "running"));
+    socket.receive(update("reporter", "running"));
+    socket.receive(update("supervisor", "completed"));
     socket.receive({ type: "task", task: taskRecord("completed") });
 
     expect(result.current.task?.status).toBe("completed");
-    expect(new Set(Object.values(statusOf(result)))).toEqual(new Set(["done"]));
-    expect(result.current.agents[1].message).toBe("Completed.");
+    expect(statusOf(result)).toEqual({
+      planner: "done",
+      file_agent: "skipped",
+      code_agent: "done",
+      reporter: "done",
+      supervisor: "done",
+    });
+    expect(result.current.agents[1].message).toBe("Not needed for this task.");
     expect(result.current.connected).toBe(false);
   });
 

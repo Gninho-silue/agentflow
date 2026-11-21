@@ -82,3 +82,50 @@ def test_agents_use_the_factory_by_default(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(workflow, "get_llm", lambda: calls.append(1) or llm_module.get_llm())
     workflow.create_workflow()
     assert calls == [1]
+
+
+# --- Availability check -----------------------------------------------------
+
+
+def test_check_llm_ok_when_ollama_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    class Ok:
+        status = 200
+
+        def __enter__(self) -> "Ok":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    def fake_urlopen(url: str, timeout: float) -> Ok:
+        calls.append(url)
+        return Ok()
+
+    monkeypatch.setattr(llm_module, "urlopen", fake_urlopen)
+    assert llm_module.check_llm() is None
+    assert calls == ["http://localhost:11434/api/tags"]
+
+
+def test_check_llm_explains_unreachable_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(url: str, timeout: float) -> None:
+        raise ConnectionRefusedError("[WinError 10061] refused")
+
+    monkeypatch.setattr(llm_module, "urlopen", refuse)
+    message = llm_module.check_llm()
+    assert message is not None
+    assert "Ollama is not reachable at http://localhost:11434" in message
+    assert "ollama serve" in message
+    assert "WinError" not in message
+
+
+def test_check_llm_reports_configuration_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    assert "GROQ_API_KEY" in (llm_module.check_llm() or "")
+
+
+def test_check_llm_trusts_groq_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test-not-a-real-key")
+    assert llm_module.check_llm() is None

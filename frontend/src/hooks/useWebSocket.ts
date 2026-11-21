@@ -112,11 +112,12 @@ function attemptProgress(agent: AgentProgress, attempt: CodeAttempt): AgentProgr
 
 function completeAgents(current: AgentProgress[], status: "completed" | "error"): AgentProgress[] {
   if (status === "completed") {
-    return current.map((agent) => ({
-      ...agent,
-      status: "done",
-      message: agent.status === "idle" ? "Completed." : agent.message,
-    }));
+    // Agents that never reported progress were not part of the plan.
+    return current.map((agent) =>
+      agent.status === "idle"
+        ? { ...agent, status: "skipped", message: "Not needed for this task." }
+        : { ...agent, status: "done" },
+    );
   }
 
   return current.map((agent) => ({

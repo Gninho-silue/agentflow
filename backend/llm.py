@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import os
+from urllib.request import urlopen
 
 from langchain_core.language_models import BaseChatModel
 
@@ -55,3 +56,31 @@ def get_llm() -> BaseChatModel:
         model=model,
         base_url=os.getenv("OLLAMA_HOST") or "http://localhost:11434",
     )
+
+
+def check_llm() -> str | None:
+    """Return None when the configured LLM looks usable, else a message for the user.
+
+    Ollama is probed (``GET /api/tags``, 3 s timeout). Groq is not called: it
+    is only checked for configuration, to avoid spending quota on health checks.
+    """
+
+    try:
+        get_llm()
+    except LLMConfigError as exc:
+        return str(exc)
+
+    provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower() or "ollama"
+    if provider != "ollama":
+        return None
+
+    host = (os.getenv("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
+    try:
+        with urlopen(f"{host}/api/tags", timeout=3):  # noqa: S310 - configured host
+            return None
+    except Exception:  # noqa: BLE001 - any failure means "not reachable"
+        model = os.getenv("LLM_MODEL") or os.getenv("OLLAMA_MODEL") or DEFAULT_MODELS["ollama"]
+        return (
+            f"Ollama is not reachable at {host}. Start it with `ollama serve` "
+            f"and make sure the model is installed (`ollama pull {model}`)."
+        )

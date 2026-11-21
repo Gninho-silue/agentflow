@@ -1,6 +1,6 @@
 export type AgentName = "planner" | "file_agent" | "code_agent" | "reporter" | "supervisor";
 
-export type AgentStatus = "idle" | "running" | "done" | "error";
+export type AgentStatus = "idle" | "running" | "done" | "error" | "skipped";
 
 export interface AgentProgress {
   agent: AgentName;

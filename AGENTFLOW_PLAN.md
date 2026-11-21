@@ -99,12 +99,20 @@
   - À traiter à l'étape 6 : quand Ollama est injoignable, le rapport affiche l'erreur brute (`WinError 10061`) et « 0 attempts » au lieu d'un message clair « LLM indisponible ». Bundle JS passé à 555 kB (Prism) : envisager un import dynamique.
 
 ## Étape 6 — Interface (skill frontend-design)
-- [ ] Même direction que le portfolio silue-dev : fond sombre bleuté, une couleur d'accent, police sans-serif pour le texte et monospace seulement pour le code et les labels.
-- [ ] Pipeline des agents : états clairs (en attente / en cours / terminé / erreur / sauté), lisible sur mobile.
-- [ ] États vides, chargement, erreurs (LLM indisponible, serveur en réveil) explicites.
-- [ ] Accessibilité : contraste AA, focus clavier, `prefers-reduced-motion`.
-- [ ] Captures avant/après pour Gninho.
-- [ ] Commit : `feat(ui): visual refresh aligned with portfolio` → push.
+- [x] Même direction que le portfolio silue-dev : fond sombre bleuté, une couleur d'accent, police sans-serif pour le texte et monospace seulement pour le code et les labels.
+- [x] Pipeline des agents : états clairs (en attente / en cours / terminé / erreur / sauté), lisible sur mobile.
+- [x] États vides, chargement, erreurs (LLM indisponible, serveur en réveil) explicites.
+- [x] Accessibilité : contraste AA, focus clavier, `prefers-reduced-motion`.
+- [x] Captures avant/après pour Gninho.
+- [x] Commit : `feat(ui): visual refresh aligned with portfolio` → push.
+- Bilan : 101 tests backend, 40 frontend. Vérifié dans le navigateur (bureau 1280 px et mobile 375 px, focus clavier).
+  - Tokens repris du portfolio (`#0d1117`, cartes `#151b23`, ambre `#F59E0B` seulement pour bouton principal, agent en cours, focus, lien), Geist + JetBrains Mono (code, durées, état des agents). Titres en casse de phrase, plus d'emoji ni de libellés en capitales.
+  - Pipeline : piste numérotée (vraie séquence), verticale sur mobile, horizontale dès `lg` ; 5 états écrits en toutes lettres (Waiting, Running, Done, Failed, Skipped). Un agent jamais lancé est « Skipped » au lieu de « Done ».
+  - États : placeholder « No result yet » et « The agents are working on it » ; bandeau « server waking up » (hook `useBackendStatus`, réessais toutes les 3 s pendant 75 s) puis « unreachable » avec bouton « Try again » ; erreurs HTTP lisibles (429, `detail` de l'API).
+  - LLM indisponible : vérification d'Ollama (`check_llm`) avant chaque exécution ; la tâche échoue en moins de 5 s avec « The language model is unavailable. Ollama is not reachable at … Start it with `ollama serve`… » au lieu de faux rapports de secours.
+  - Accessibilité : focus visible ambre partout, `prefers-reduced-motion` (animations coupées), zone d'upload atteignable au clavier, bouton de suppression visible au focus et sur mobile, libellé sur la zone de texte, lien d'évitement « Skip to results », états non portés par la couleur seule.
+  - Captures avant/après : `docs/screenshots/` (before-desktop-empty, before-desktop-result, before-mobile ; after-desktop-empty, after-desktop-result, after-desktop-llm-unavailable, after-mobile).
+  - Restes : bundle JS 557 kB (coloration Prism) ; l'import dynamique est possible mais demande d'adapter les tests du ResultViewer.
 
 ## Étape 7 — Déploiement
 - [ ] **Backend sur Render** (Docker, WebSockets supportés, offre gratuite qui se met en veille) avec `LLM_PROVIDER=groq`. **Frontend sur Vercel.**

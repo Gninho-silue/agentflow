@@ -39,7 +39,7 @@ describe("TaskInput — task validation", () => {
     const { textarea, submit } = setup();
     fireEvent.change(textarea, { target: { value: "x".repeat(2001) } });
 
-    expect(screen.getByText("2001 / 2000")).toHaveClass("text-red-400");
+    expect(screen.getByText("2001 / 2000")).toHaveClass("text-bad");
     expect(submit).toBeDisabled();
   });
 
