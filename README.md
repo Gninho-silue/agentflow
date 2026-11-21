@@ -179,8 +179,9 @@ npm run lint && npm run typecheck && npm test
   backend tests, the same tests inside the production Docker image as the non-root
   user, and frontend lint, typecheck, tests and build.
 - **CD** ([`deploy.yml`](.github/workflows/deploy.yml)), only after CI passed on `main`:
-  deploys the backend to Render and the frontend to Vercel, then runs a production
-  smoke test that waits for the new commit, runs a real task and checks the site.
+  deploys the backend to Render, then runs a production smoke test that waits for the
+  new commit, runs a real task and checks the site. The frontend is deployed by Vercel
+  on each push to `main`.
   Setup: [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## API
