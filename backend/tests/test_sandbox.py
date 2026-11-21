@@ -158,3 +158,14 @@ def test_code_agent_saves_chart_image(monkeypatch: pytest.MonkeyPatch, tmp_path:
     chart = result["output"].split("[chart_path]:")[1].strip()
     assert chart.startswith("uploads/chart_")
     assert (tmp_path / chart).read_bytes() == image
+
+
+def test_charts_use_the_dark_interface_palette(sandbox: SubprocessSandbox) -> None:
+    import io
+
+    from PIL import Image
+
+    result = sandbox.run("df.plot(kind='bar', x='category', y='total')", SALES)
+    image = Image.open(io.BytesIO(result.images[0])).convert("RGB")
+    # Background of the report panel (#151b23), not matplotlib's default white.
+    assert image.getpixel((2, 2)) == (0x15, 0x1B, 0x23)

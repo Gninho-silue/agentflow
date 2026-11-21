@@ -134,3 +134,11 @@ def test_correction_strips_markdown_fences() -> None:
 
     assert sandbox.codes[1] == "print(3)"
     assert result["output"] == "3"
+
+
+def test_reporter_prompt_forbids_calling_half_a_majority() -> None:
+    from backend.agents.reporter import ReporterAgent
+
+    prompt = ReporterAgent(llm=RecordingLLM())._system_prompt()  # type: ignore[arg-type]
+    assert "strictly more than 50%" in prompt
+    assert "exact numbers" in prompt

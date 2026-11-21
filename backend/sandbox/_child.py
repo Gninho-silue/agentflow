@@ -168,6 +168,8 @@ def _run(config: dict) -> dict:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    _apply_chart_style(matplotlib)
+
     # Warm-up: trigger lazy imports and font loading while we are still trusted.
     figure = plt.figure()
     plt.plot([0, 1], [0, 1])
@@ -233,6 +235,39 @@ def _run(config: dict) -> dict:
         result["stdout"] = stdout.getvalue().strip()
         return result
     return {"ok": True, "stdout": stdout.getvalue().strip()}
+
+
+def _apply_chart_style(matplotlib: object) -> None:
+    """Charts match the dark interface: panel background, blue-grey text, amber first."""
+
+    surface, line, ink, soft = "#151b23", "#262f3b", "#e6edf3", "#9aa6b6"
+    matplotlib.rcParams.update(  # type: ignore[attr-defined]
+        {
+            "figure.facecolor": surface,
+            "savefig.facecolor": surface,
+            "axes.facecolor": surface,
+            "axes.edgecolor": line,
+            "axes.labelcolor": soft,
+            "axes.titlecolor": ink,
+            "axes.grid": True,
+            "axes.grid.axis": "y",
+            "axes.axisbelow": True,
+            "figure.autolayout": True,
+            "savefig.bbox": "tight",
+            "grid.color": line,
+            "grid.linewidth": 0.6,
+            "xtick.color": soft,
+            "ytick.color": soft,
+            "text.color": ink,
+            "legend.facecolor": surface,
+            "legend.edgecolor": line,
+            "axes.prop_cycle": matplotlib.cycler(  # type: ignore[attr-defined]
+                color=["#F59E0B", "#58a6ff", "#3fb950", "#d2a8ff", "#f78166", "#9aa6b6"]
+            ),
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+        }
+    )
 
 
 def _save_open_figures(plt: object, workdir: str) -> None:
