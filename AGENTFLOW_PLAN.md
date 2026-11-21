@@ -134,8 +134,8 @@
 - [x] Message côté frontend quand le backend se réveille (premier appel lent sur l'offre gratuite).
 - [x] Limites de la démo : rate limiting par IP, taille de fichier max, nettoyage automatique des tâches et fichiers de plus de 24 h.
 - [x] `render.yaml` dans le repo. Gninho crée les comptes et colle `GROQ_API_KEY` dans Render lui-même ; **ne jamais demander ni écrire la clé**.
-- [ ] Vérifier la démo en ligne avec les 3 exemples.
-- [ ] Commit : `chore(deploy): Render backend and Vercel frontend` → push.
+- [x] Vérifier la démo en ligne avec les 3 exemples (vérifié par Gninho sur le frontend, et par Claude dans le navigateur intégré).
+- [x] Commit : `chore(deploy): Render backend and Vercel frontend` → push.
 - Bilan (préparation, commit `chore(deploy)`) : 129 tests backend, 44 frontend.
   - `render.yaml` (Docker, plan free, `/health`, Groq) ; secrets en `sync: false` (`GROQ_API_KEY`, `CORS_ORIGINS`), `METRICS_TOKEN` généré par Render ; test qui vérifie qu'aucun secret n'est écrit dans le fichier.
   - `CORS_ORIGINS` (liste explicite, `*` refusé) ; frontend : `VITE_API_BASE_URL` seul suffit, l'URL `wss://` en est déduite (`src/config.ts`).
@@ -143,9 +143,12 @@
   - Nettoyage horaire des tâches et fichiers de plus de 24 h (`backend/maintenance.py`, ne sort jamais du dossier d'uploads, garde les tâches en cours).
   - Mémoire mesurée dans Docker limité à 512 Mo : serveur ≈ 140 Mo, sandbox à 256 Mo suffisant pour pandas + matplotlib, une bombe mémoire n'abat pas le serveur.
   - L'image lit `PORT` (Render) ; `frontend/vercel.json` (en-têtes de sécurité) ; guide pas à pas `docs/DEPLOY.md`.
-  - **Reste : création des comptes et déploiement par Gninho (docs/DEPLOY.md), puis vérification en ligne des 3 exemples.**
+  - Déployé : https://agentflow-alpha-azure.vercel.app (frontend), https://agentflow-api-3tu5.onrender.com (API).
+  - Problèmes trouvés en ligne et corrigés : Groq avait retiré `llama-3.3-70b-versatile` (le contrôle ne vérifiait que la présence de la clé → appel de `/openai/v1/models`) ; Cloudflare renvoie 403 à l'agent `Python-urllib` (→ `User-Agent` explicite) ; défaut Groq passé à `openai/gpt-oss-120b` ; `LLM_MODEL` réglé dans le tableau de bord (`sync: false`). `ERR_BLOCKED_BY_CLIENT` chez Gninho = Brave Shields, pas CORS.
+  - Ajouts demandés en fin d'étape : favicon SVG + icône Apple + image Open Graph, métadonnées (titre, description, OG, Twitter), Vercel Web Analytics et Speed Insights, CD (`deploy.yml` : après la CI → deploy hook Render → Vercel CLI → test de fumée en production `scripts/smoke_test.py`). `checksPass` de Render écarté : le workflow de déploiement est lui-même un check du commit, d'où un interblocage.
 
 ## Étape 8 — README et cohérence
-- [ ] README : lien de démo en ligne, GIF ou capture du pipeline, architecture (Mermaid), section sécurité, comment lancer en local avec Ollama, tests et CI.
-- [ ] Ne plus dire « zero API cost » sans nuance : « runs fully locally with Ollama; the hosted demo uses Groq's free tier ».
-- [ ] Résumé final pour Gninho : fonctionnalités ajoutées, nombre de tests, URL de démo, textes à mettre à jour sur LinkedIn, le portfolio et le README de profil GitHub.
+- [x] README : lien de démo en ligne, GIF ou capture du pipeline, architecture (Mermaid), section sécurité, comment lancer en local avec Ollama, tests et CI.
+- [x] Ne plus dire « zero API cost » sans nuance : « runs fully locally with Ollama; the hosted demo uses Groq's free tier ».
+- [x] Résumé final pour Gninho : fonctionnalités ajoutées, nombre de tests, URL de démo, textes à mettre à jour sur LinkedIn, le portfolio et le README de profil GitHub.
+- Bilan : README réécrit (démo en ligne, capture, architecture Mermaid, sécurité, observabilité, lancement local avec Ollama, tests et CI/CD, « runs fully locally with Ollama; the hosted demo uses Groq's free tier »), fichier `LICENSE` ajouté (le README annonçait MIT sans fichier). Résumé final donné à Gninho dans la conversation.

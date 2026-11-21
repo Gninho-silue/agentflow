@@ -1,284 +1,237 @@
-# 🤖 AgentFlow — Multi-Agent Task Automation Platform
+# AgentFlow: multi-agent data analysis
 
-> Describe any task in natural language. Multiple specialized AI agents coordinate to execute it automatically — fully local, no paid APIs.
+> Describe a task and add a CSV, JSON or TXT file. Five AI agents plan it, read the
+> data, write and run Python in a sandbox, fix their own code when it fails, and
+> hand you a Markdown report with charts.
 
-[![CI](https://github.com/Gninho-silue/agentflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Gninho-silue/agentflow/actions/workflows/ci.yml) ![AgentFlow Demo](https://img.shields.io/badge/status-active-brightgreen) ![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react) ![LangGraph](https://img.shields.io/badge/LangGraph-0.2.50-purple) ![Ollama](https://img.shields.io/badge/Ollama-local_LLM-orange) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
+**Live demo: [agentflow-alpha-azure.vercel.app](https://agentflow-alpha-azure.vercel.app)**. Pick one
+of the three examples; no dataset needed.
+
+[![CI](https://github.com/Gninho-silue/agentflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Gninho-silue/agentflow/actions/workflows/ci.yml)
+[![Deploy](https://github.com/Gninho-silue/agentflow/actions/workflows/deploy.yml/badge.svg)](https://github.com/Gninho-silue/agentflow/actions/workflows/deploy.yml)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
+![LangGraph](https://img.shields.io/badge/LangGraph-0.2.50-purple)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
+
+![AgentFlow: the five-agent pipeline and a finished report](docs/screenshots/after-desktop-result.jpg)
+
+It runs **fully locally with Ollama** (no API key, no cost). The hosted demo uses
+**Groq's free tier**, because a free cloud instance has no GPU.
 
 ---
 
-## ✨ What it does
+## What it does
 
-AgentFlow takes a natural language task (e.g. _"Analyze this CSV and generate a revenue report"_) and routes it through a pipeline of specialized AI agents that collaborate to complete it — all running locally on your machine with **zero API costs**.
+| Agent | Role |
+| --- | --- |
+| **Planner** | Splits the task into subtasks and chooses the agents it needs |
+| **FileAgent** | Reads the uploaded CSV, JSON or TXT file into rows and a summary (skipped when there is no file) |
+| **CodeAgent** | Writes pandas / matplotlib code and runs it in an isolated sandbox; on an error it sends the code and traceback back to the LLM, up to 3 attempts |
+| **Reporter** | Writes the Markdown report with the computed results and charts, and says so when the code could not run |
+| **Supervisor** | Checks the workflow state and ends the run cleanly, including on errors |
 
-### Agent Pipeline
+The interface streams each agent's state over a WebSocket and shows the duration
+per agent, the generated code, every self-correction attempt and the charts. Reports
+can be copied or downloaded as Markdown.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        UI["React + TypeScript<br/>(Vercel)"]
+    end
+    subgraph API["FastAPI (Render, Docker)"]
+        R["REST + WebSocket"]
+        subgraph Graph["LangGraph workflow"]
+            P[Planner] --> F[FileAgent] --> C[CodeAgent] --> Rep[Reporter] --> S[Supervisor]
+            P -. no file .-> C
+        end
+        DB[(SQLite)]
+        M["/metrics, JSON logs"]
+    end
+    SB["Sandbox subprocess<br/>python -I -S, audit hook,<br/>rlimits, timeout"]
+    LLM["LLM<br/>Ollama (local) or Groq (demo)"]
+
+    UI -- "tasks, uploads" --> R
+    R -- "progress (WebSocket)" --> UI
+    R --> Graph
+    Graph --> DB
+    P & C & Rep --> LLM
+    C -- "generated code, copy of the file" --> SB
+    SB -- "stdout, charts, traceback" --> C
 ```
-Planner → FileAgent → CodeAgent → Reporter → Supervisor
-```
 
-| Agent          | Role                                                                   |
-| -------------- | ---------------------------------------------------------------------- |
-| **Planner**    | Decomposes the task into subtasks and assigns them to the right agents |
-| **FileAgent**  | Reads and parses uploaded files (CSV, JSON, TXT)                       |
-| **CodeAgent**  | Generates Python code and runs it in an isolated subprocess sandbox    |
-| **Reporter**   | Aggregates all outputs into a clean Markdown report                    |
-| **Supervisor** | Monitors workflow state, handles errors, decides completion            |
+## Run it locally (Ollama, no API key)
 
----
-
-## 🛠️ Tech Stack
-
-**Backend**
-
-- Python 3.11 · FastAPI · LangGraph · LangChain · SQLAlchemy (SQLite)
-
-**Frontend**
-
-- React 18 · TypeScript · Tailwind CSS · Vite · Lucide React
-
-**AI / LLM**
-
-- Ollama (local, default) · `llama3.2:1b` — runs entirely on CPU, no GPU required
-- Groq (optional, for a hosted demo) · `openai/gpt-oss-120b`
-
-**DevOps**
-
-- Docker · docker-compose
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- [Ollama](https://ollama.com/download) installed locally
-- Docker + docker-compose
-- Node.js 18+
-
-### 1. Pull the LLM model
+Prerequisites: [Ollama](https://ollama.com/download), Python 3.11 or 3.12, Node.js 20.
 
 ```bash
 ollama pull llama3.2:1b
-```
 
-### Choosing the LLM provider
-
-All agents get their model from one factory (`backend/llm.py`), configured by
-environment variables:
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `LLM_PROVIDER` | `ollama` | `ollama` (fully local) or `groq` (hosted API) |
-| `LLM_MODEL` | `llama3.2:1b` (ollama) / `openai/gpt-oss-120b` (groq) | Model name for the chosen provider |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `GROQ_API_KEY` | — | Required when `LLM_PROVIDER=groq`; the app refuses to start without it |
-
-Keep `GROQ_API_KEY` in your shell or your host's secret settings; never commit it.
-
-### 2. Clone the repository
-
-```bash
 git clone https://github.com/Gninho-silue/agentflow.git
 cd agentflow
-```
 
-### 3. Run with Docker
-
-```bash
-docker-compose up --build
-```
-
-### Deploy the hosted demo
-
-Render (backend, Groq) + Vercel (frontend): see [docs/DEPLOY.md](docs/DEPLOY.md).
-
-### 4. Or run locally
-
-```bash
-# Backend (from the repository root)
+# Backend, from the repository root
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload --port 8000
 
-# Frontend (new terminal)
+# Frontend, in a second terminal
 cd frontend
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173)
+Open [http://localhost:5173](http://localhost:5173). Or run both with Docker
+(non-root image, read-only root filesystem): `docker compose up --build`.
 
----
+On CPU the default `llama3.2:1b` takes a few minutes per task. A larger model such
+as `llama3.2:3b` writes better code but is slower; with Groq a task takes seconds.
 
-## 🧪 Tests
+### Configuration
 
-Tests never call a real LLM: the agents are driven by a scripted fake model
-(`FakeListChatModel`), so they run offline and without Ollama.
+All agents get their model from one factory (`backend/llm.py`):
 
-```bash
-# Backend: planner parsing, LangGraph routing, HTTP API, WebSocket
-pip install -r backend/requirements-dev.txt
-pytest
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `ollama` | `ollama` (fully local) or `groq` (hosted API) |
+| `LLM_MODEL` | `llama3.2:1b` (ollama) / `openai/gpt-oss-120b` (groq) | Model for the chosen provider |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `GROQ_API_KEY` | none | Required with `groq`; read from the environment only, never committed |
 
-# Frontend: lint, typecheck, unit tests (Vitest + Testing Library)
-cd frontend
-npm run lint
-npm run typecheck
-npm test
-```
+Before each task the backend checks that the model answers (Ollama reachable, or
+Groq key valid and model still offered) and fails fast with an actionable message
+otherwise. Other settings are listed in [`.env.example`](.env.example).
 
-GitHub Actions runs both suites (plus the frontend build) on every push and pull request.
+## Security model
 
----
-
-## 🔒 Security model
-
-The CodeAgent runs Python written by an LLM, so that code is treated as
-untrusted. It never runs inside the API server process:
+The CodeAgent runs Python written by an LLM, so that code is treated as untrusted.
+It never runs inside the API server process:
 
 | Layer | What it does |
 | --- | --- |
 | **Separate process** | Each run starts a fresh `python -I -S -B` process with an **empty environment** (no `GROQ_API_KEY`, no server secrets). |
 | **Throw-away working dir** | The `cwd` is a new temporary directory holding only a **copy** of the uploaded file. Charts are collected from it, then it is deleted. |
-| **Audit hook** (`sys.addaudithook`) | Installed after the trusted imports. Refuses reading files outside the working dir and the Python installation, writing outside the working dir, sockets / HTTP, `subprocess`, `os.system`, `fork`/`exec`, `ctypes`, `gc.get_objects` and changing resource limits. |
-| **Resource limits** (Linux) | `setrlimit` on CPU time, address space (1 GB), file size (20 MB) and **no new processes or threads**. Soft = hard, so the code cannot raise them. |
+| **Audit hook** (`sys.addaudithook`) | Installed after the trusted imports. Refuses reading files outside the working dir and the Python installation, writing outside the working dir, sockets and HTTP, `subprocess`, `os.system`, `fork`/`exec`, `ctypes`, `gc.get_objects` and changing resource limits. |
+| **Resource limits** (Linux) | `setrlimit` on CPU time, address space (1 GB locally, 256 MB on the demo), file size (20 MB) and **no new processes or threads**. Soft = hard, so the code cannot raise them. |
 | **Hard timeout** | 5 s of execution (after start-up), then the whole process group is killed. The server stays responsive. |
-| **Restricted builtins** | No `open`, `eval`, `exec`, `__import__` of arbitrary modules (only pandas, numpy, matplotlib, math, re, statistics). Defense in depth, not the boundary. |
-| **Container** | The Docker image runs as an unprivileged user (uid 10001), with a read-only root filesystem: only `/tmp` and the uploads/data volumes are writable. |
+| **Restricted builtins** | Only pandas, numpy, matplotlib, math, re and statistics can be imported; no `open`, `eval` or `exec`. Defense in depth, not the boundary. |
+| **Container** | The image runs as an unprivileged user (uid 10001). With docker-compose the root filesystem is also read-only. |
 
-All of this is covered by attack tests in
-[`backend/tests/test_sandbox_attacks.py`](backend/tests/test_sandbox_attacks.py):
-reading `/etc/passwd`, the backend source or a file outside the work dir, writing
-outside it, `__subclasses__` / `__globals__` escapes, opening a socket, starting a
-subprocess, infinite loops, massive allocations and reading environment variables.
-CI runs them on Linux, including inside the production image as the non-root user.
+Attack tests in [`backend/tests/test_sandbox_attacks.py`](backend/tests/test_sandbox_attacks.py)
+cover reading `/etc/passwd`, the backend source or any file outside the work dir,
+writing outside it, `__subclasses__` / `__globals__` escapes, sockets, subprocesses,
+infinite loops, massive allocations and environment variables. CI runs them on Linux,
+including inside the production image as the non-root user.
 
-**Limits, honestly:**
+The public demo also limits task creation to 10 per minute per IP, uploads to 5 MB,
+and deletes tasks and files after 24 hours.
 
-- This is a **defense-in-depth sandbox for a portfolio demo, not production-grade
-  multi-tenant isolation**. Audit hooks run inside the same interpreter as the
-  untrusted code; a CPython memory-corruption bug could bypass them. Serious
-  multi-tenant use needs a kernel-level boundary (gVisor, Firecracker, a hosted
-  sandbox such as E2B). The `Sandbox` interface (`backend/sandbox/base.py`)
-  exists so one can be plugged in without touching the agents.
-- On **Windows** (local development only) `setrlimit` does not exist: memory and
-  process-count limits are not enforced; the timeout, audit hook and empty
-  environment still apply.
+**Limits, honestly:** this is a defense-in-depth sandbox for a portfolio demo, **not
+production-grade multi-tenant isolation**. Audit hooks run in the same interpreter as
+the untrusted code, so a CPython memory-corruption bug could bypass them. Real
+multi-tenant use needs a kernel-level boundary (gVisor, Firecracker, or a hosted sandbox
+such as E2B); the `Sandbox` interface (`backend/sandbox/base.py`) exists so one can be
+plugged in without touching the agents. On Windows (local development) `setrlimit`
+does not exist, so memory and process limits are not enforced there.
 
-Tunable with environment variables: `SANDBOX_TIMEOUT_SECONDS` (5),
-`SANDBOX_MEMORY_MB` (1024), `SANDBOX_MAX_FILE_MB` (20),
-`SANDBOX_STARTUP_TIMEOUT_SECONDS` (60).
+## Observability
 
----
-
-## 📈 Observability
-
-No external service is needed: logs go to stdout and metrics are exposed for Prometheus.
-
-**Structured logs.** One JSON object per line, with a `task_id` and a `request_id` on
-every line, so a whole run can be followed with one filter:
+Logs go to stdout as one JSON object per line, each carrying a `task_id` and a
+`request_id`, so a whole run can be followed with one filter:
 
 ```json
 {"timestamp": "2026-11-21T13:22:35.645Z", "level": "info", "logger": "agentflow", "message": "Code attempt 1/3 failed: division by zero", "task_id": "4342f12f-…", "request_id": "a9a6cfdf…", "agent": "code_agent", "attempt": 1, "error_type": "ZeroDivisionError"}
 ```
 
-`LOG_FORMAT=text` switches to readable lines for local development; `LOG_LEVEL`
-sets the level (default `INFO`). Every response carries an `X-Request-ID` header
-(the client's own value is kept when it is safe).
-
-**Metrics** on `GET /metrics` (Prometheus text format; set `METRICS_TOKEN` to require
-`Authorization: Bearer <token>`):
+Prometheus metrics on `GET /metrics` (bearer token when `METRICS_TOKEN` is set):
 
 | Metric | What it tells you |
 | --- | --- |
-| `agentflow_tasks_total{status}` | Completed vs. failed tasks |
-| `agentflow_task_duration_seconds` | End-to-end task duration |
+| `agentflow_tasks_total{status}`, `agentflow_task_duration_seconds` | Success rate and end-to-end duration |
 | `agentflow_agent_duration_seconds{agent}` | Where the time goes, per agent |
-| `agentflow_llm_requests_total{provider,model,outcome}` / `agentflow_llm_latency_seconds` | LLM errors and latency |
-| `agentflow_code_attempts_total{outcome}` | How often the CodeAgent needs to self-correct |
-| `agentflow_sandbox_runs_total{outcome}` / `agentflow_sandbox_duration_seconds` | Sandbox errors and timeouts |
-| `agentflow_http_requests_total{method,route,status}` / `agentflow_http_request_duration_seconds` | API traffic, by route template |
+| `agentflow_llm_requests_total{provider,model,outcome}`, `agentflow_llm_latency_seconds` | LLM errors and latency |
+| `agentflow_code_attempts_total{outcome}` | How often the CodeAgent self-corrects |
+| `agentflow_sandbox_runs_total{outcome}`, `agentflow_sandbox_duration_seconds` | Sandbox errors and timeouts |
+| `agentflow_http_requests_total{method,route,status}` | API traffic by route template |
 
-**Health checks.** `GET /health` is a fast liveness probe (used by Docker and the
-host). `GET /health/ready` checks the database, the LLM and free disk space, and
-answers `503` with the failing check when something is missing.
+`GET /health` is the liveness probe; `GET /health/ready` checks the database, the LLM
+and disk space, reports the deployed commit, and answers `503` when something is missing.
 
----
+## Tests, CI and CD
 
-## 📋 Usage
+Tests never call a real LLM: agents are driven by scripted fake models, so the suites
+run offline. **140 backend tests** (pytest: planner parsing, LangGraph routing, API,
+WebSocket, sandbox attacks, self-correction, observability, deployment settings) and
+**44 frontend tests** (Vitest + Testing Library).
 
-1. **Describe your task** in the text area (e.g. _"Analyze this CSV, calculate revenue by category, identify top 5 products"_)
-2. **Upload a file** (CSV, JSON, or TXT) — drag & drop supported
-3. **Click "Run AgentFlow"** — watch each agent execute in real time via WebSocket
-4. **Download the report** as a Markdown file when complete
+```bash
+pip install -r backend/requirements-dev.txt
+pytest
 
----
+cd frontend
+npm run lint && npm run typecheck && npm test
+```
 
-## 🔌 API Endpoints
+- **CI** ([`ci.yml`](.github/workflows/ci.yml)), on every push and pull request:
+  backend tests, the same tests inside the production Docker image as the non-root
+  user, and frontend lint, typecheck, tests and build.
+- **CD** ([`deploy.yml`](.github/workflows/deploy.yml)), only after CI passed on `main`:
+  deploys the backend to Render and the frontend to Vercel, then runs a production
+  smoke test that waits for the new commit, runs a real task and checks the site.
+  Setup: [docs/DEPLOY.md](docs/DEPLOY.md).
 
-| Method   | Endpoint                  | Description                     |
-| -------- | ------------------------- | ------------------------------- |
-| `POST`   | `/api/tasks`              | Create a new task               |
-| `POST`   | `/api/tasks/{id}/execute` | Start the agent workflow        |
-| `GET`    | `/api/tasks/{id}/status`  | Poll task status                |
-| `GET`    | `/api/tasks`              | List all past tasks             |
-| `POST`   | `/api/upload`             | Upload a file                   |
-| `DELETE` | `/api/tasks/{id}`         | Delete a single task            |
-| `DELETE` | `/api/tasks`              | Delete all tasks                |
-| `WS`     | `/ws/{task_id}`           | Real-time agent progress stream |
+## API
 
----
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/upload` | Upload a CSV, JSON or TXT file |
+| `POST` | `/api/tasks` | Create a task |
+| `POST` | `/api/tasks/{id}/execute` | Start the workflow |
+| `GET` | `/api/tasks/{id}/status` | Task status and result |
+| `GET` | `/api/tasks` | Past tasks |
+| `DELETE` | `/api/tasks/{id}`, `/api/tasks` | Delete one task, or all |
+| `WS` | `/ws/{task_id}` | Live progress and self-correction attempts |
+| `GET` | `/health`, `/health/ready`, `/metrics` | Liveness, readiness, Prometheus metrics |
 
-## 📁 Project Structure
+## Project structure
 
 ```
 agentflow/
 ├── backend/
-│   ├── agents/          # Planner, FileAgent, CodeAgent, Reporter, Supervisor
-│   ├── graph/           # LangGraph workflow + AgentState
-│   ├── api/             # FastAPI routes + WebSocket handler
-│   ├── sandbox/         # Isolated execution of generated code (Sandbox interface)
-│   ├── tests/           # pytest suite (fake LLM, sandbox attack tests)
-│   ├── tools/           # File parsing, code executor entry point
-│   ├── models/          # SQLAlchemy task model
-│   └── main.py
+│   ├── agents/          # Planner, FileAgent, CodeAgent (self-correction), Reporter, Supervisor
+│   ├── graph/           # LangGraph workflow and state
+│   ├── api/             # REST routes and WebSocket
+│   ├── sandbox/         # Sandbox interface and subprocess implementation
+│   ├── llm.py           # LLM provider factory and availability check
+│   ├── observability.py # JSON logs and Prometheus metrics
+│   ├── maintenance.py   # 24-hour retention cleanup
+│   └── tests/
 ├── frontend/
-│   ├── src/
-│   │   ├── components/  # TaskInput, AgentPipeline, ResultViewer, TaskHistory
-│   │   └── hooks/       # useWebSocket
-│   └── App.tsx
-└── docker-compose.yml
+│   ├── public/examples/ # The three demo datasets
+│   └── src/             # React components, hooks, tests
+├── scripts/smoke_test.py
+├── docs/                # Deployment guide, screenshots
+└── render.yaml          # Render Blueprint
 ```
 
----
+## Roadmap
 
-## ⚡ Performance Notes
+- Persistent storage for the hosted demo (Postgres and object storage)
+- A kernel-level sandbox (gVisor or E2B) behind the existing `Sandbox` interface
+- PDF input
+- Streaming the report while it is written
 
-- Runs on **CPU only** — no GPU required
-- Execution time depends heavily on the CPU and the model: the default `llama3.2:1b` is the lightest; a larger model such as `llama3.2:3b` (`LLM_MODEL=llama3.2:3b`) gives better plans and code but is several times slower on CPU
-- With `LLM_PROVIDER=groq` the LLM runs on Groq's servers, so a task takes seconds instead of minutes
+## Author
 
----
-
-## 🔮 Roadmap
-
-- [ ] Support PDF file parsing
-- [ ] Add streaming token output in the result viewer
-- [ ] Deploy on Railway with persistent storage
-- [ ] Add support for Mistral 7B for higher quality outputs
-
----
-
-## 👤 Author
-
-**Gninninmaguignon Silué**
-Full-Stack Engineer · Cloud-Native · AI Integration
+**Gninninmaguignon Silue**, full-stack engineer, cloud-native and AI integration.
 
 [![Portfolio](https://img.shields.io/badge/Portfolio-silue--dev.vercel.app-blue)](https://silue-dev.vercel.app)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-gninema--silue-0077B5?logo=linkedin)](https://linkedin.com/in/gninema-silue)
 [![GitHub](https://img.shields.io/badge/GitHub-Gninho--silue-181717?logo=github)](https://github.com/Gninho-silue)
 
----
+## License
 
-## 📄 License
-
-MIT License — free to use, modify, and distribute.
+[MIT](LICENSE)
