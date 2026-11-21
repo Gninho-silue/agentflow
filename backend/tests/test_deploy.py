@@ -135,6 +135,10 @@ def test_running_tasks_are_not_deleted(db_session, tmp_path: Path) -> None:  # n
 # --- Render blueprint -------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not (ROOT / "render.yaml").is_file(),
+    reason="render.yaml is not copied into the backend image; the plain pytest job covers it",
+)
 def test_render_blueprint_is_safe_and_complete() -> None:
     blueprint = yaml.safe_load((ROOT / "render.yaml").read_text(encoding="utf-8"))
     (service,) = blueprint["services"]
