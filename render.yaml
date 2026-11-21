@@ -1,0 +1,37 @@
+# Render Blueprint for the AgentFlow backend (hosted demo).
+# Secrets (GROQ_API_KEY) and the Vercel URL (CORS_ORIGINS) are entered in the
+# Render dashboard when the Blueprint is created: they are never stored here.
+services:
+  - type: web
+    name: agentflow-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: LLM_PROVIDER
+        value: groq
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: METRICS_TOKEN
+        generateValue: true
+      # Render's proxy appends the real client address to X-Forwarded-For.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      # Free instance has 512 MB of RAM; the server itself uses about 140 MB.
+      - key: SANDBOX_MEMORY_MB
+        value: "256"
+      - key: MAX_FILE_SIZE_MB
+        value: "5"
+      - key: RETENTION_HOURS
+        value: "24"
+      - key: LOG_FORMAT
+        value: json

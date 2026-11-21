@@ -16,6 +16,7 @@ import pytest
 # Must be set before ``backend.api.routes`` is imported (read at import time).
 _TEST_ROOT = Path(tempfile.mkdtemp(prefix="agentflow-tests-"))
 os.environ["UPLOAD_DIR"] = str(_TEST_ROOT / "uploads")
+os.environ["RETENTION_HOURS"] = "0"  # no background cleanup loop in tests
 
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402

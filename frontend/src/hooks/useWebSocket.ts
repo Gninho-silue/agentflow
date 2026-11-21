@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AgentName, AgentProgress, AgentStatus, CodeAttempt, TaskRecord } from "../types";
+import { WS_BASE } from "../config";
 
 const initialAgents: AgentProgress[] = [
   { agent: "planner", status: "idle", message: "Waiting for task." },
@@ -9,7 +10,6 @@ const initialAgents: AgentProgress[] = [
   { agent: "supervisor", status: "idle", message: "Workflow not started." },
 ];
 
-const WS_BASE = import.meta.env.VITE_WS_BASE_URL ?? "ws://localhost:8000";
 
 interface AgentUpdateEvent {
   type: "agent_update";

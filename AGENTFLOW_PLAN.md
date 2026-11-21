@@ -129,13 +129,21 @@
   - Pour le déploiement : définir `METRICS_TOKEN` sur Render pour ne pas exposer `/metrics` publiquement.
 
 ## Étape 7 — Déploiement
-- [ ] **Backend sur Render** (Docker, WebSockets supportés, offre gratuite qui se met en veille) avec `LLM_PROVIDER=groq`. **Frontend sur Vercel.**
-- [ ] CORS limité au domaine Vercel ; URL du backend en variable d'environnement côté frontend.
-- [ ] Message côté frontend quand le backend se réveille (premier appel lent sur l'offre gratuite).
-- [ ] Limites de la démo : rate limiting par IP, taille de fichier max, nettoyage automatique des tâches et fichiers de plus de 24 h.
-- [ ] `render.yaml` dans le repo. Gninho crée les comptes et colle `GROQ_API_KEY` dans Render lui-même ; **ne jamais demander ni écrire la clé**.
+- [x] **Backend sur Render** (Docker, WebSockets supportés, offre gratuite qui se met en veille) avec `LLM_PROVIDER=groq`. **Frontend sur Vercel.**
+- [x] CORS limité au domaine Vercel ; URL du backend en variable d'environnement côté frontend.
+- [x] Message côté frontend quand le backend se réveille (premier appel lent sur l'offre gratuite).
+- [x] Limites de la démo : rate limiting par IP, taille de fichier max, nettoyage automatique des tâches et fichiers de plus de 24 h.
+- [x] `render.yaml` dans le repo. Gninho crée les comptes et colle `GROQ_API_KEY` dans Render lui-même ; **ne jamais demander ni écrire la clé**.
 - [ ] Vérifier la démo en ligne avec les 3 exemples.
 - [ ] Commit : `chore(deploy): Render backend and Vercel frontend` → push.
+- Bilan (préparation, commit `chore(deploy)`) : 129 tests backend, 44 frontend.
+  - `render.yaml` (Docker, plan free, `/health`, Groq) ; secrets en `sync: false` (`GROQ_API_KEY`, `CORS_ORIGINS`), `METRICS_TOKEN` généré par Render ; test qui vérifie qu'aucun secret n'est écrit dans le fichier.
+  - `CORS_ORIGINS` (liste explicite, `*` refusé) ; frontend : `VITE_API_BASE_URL` seul suffit, l'URL `wss://` en est déduite (`src/config.ts`).
+  - Limite par IP derrière proxy : `TRUSTED_PROXY_HOPS` lit `X-Forwarded-For` par la droite (testé : un client ne peut pas contourner la limite en falsifiant l'en-tête). `--forwarded-allow-ips=*` d'uvicorn écarté car il prend l'adresse la plus à gauche, falsifiable.
+  - Nettoyage horaire des tâches et fichiers de plus de 24 h (`backend/maintenance.py`, ne sort jamais du dossier d'uploads, garde les tâches en cours).
+  - Mémoire mesurée dans Docker limité à 512 Mo : serveur ≈ 140 Mo, sandbox à 256 Mo suffisant pour pandas + matplotlib, une bombe mémoire n'abat pas le serveur.
+  - L'image lit `PORT` (Render) ; `frontend/vercel.json` (en-têtes de sécurité) ; guide pas à pas `docs/DEPLOY.md`.
+  - **Reste : création des comptes et déploiement par Gninho (docs/DEPLOY.md), puis vérification en ligne des 3 exemples.**
 
 ## Étape 8 — README et cohérence
 - [ ] README : lien de démo en ligne, GIF ou capture du pipeline, architecture (Mermaid), section sécurité, comment lancer en local avec Ollama, tests et CI.

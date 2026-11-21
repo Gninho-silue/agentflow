@@ -88,6 +88,10 @@ cd agentflow
 docker-compose up --build
 ```
 
+### Deploy the hosted demo
+
+Render (backend, Groq) + Vercel (frontend): see [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ### 4. Or run locally
 
 ```bash

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AgentPipeline } from "./components/AgentPipeline";
 import { BackendBanner, BackendStatusPill } from "./components/BackendStatus";
+import { API_BASE } from "./config";
 import { ExamplePicker } from "./components/ExamplePicker";
 import { ResultViewer } from "./components/ResultViewer";
 import { TaskHistory } from "./components/TaskHistory";
@@ -9,7 +10,6 @@ import { useBackendStatus } from "./hooks/useBackendStatus";
 import { useWebSocket } from "./hooks/useWebSocket";
 import type { TaskRecord } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export default function App(): JSX.Element {
   const [taskId, setTaskId] = useState<string | null>(null);
