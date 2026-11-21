@@ -164,6 +164,8 @@ def test_check_llm_accepts_an_available_groq_model(monkeypatch: pytest.MonkeyPat
     request = seen[0]
     assert request.full_url == "https://api.groq.com/openai/v1/models"  # type: ignore[attr-defined]
     assert request.get_header("Authorization") == "Bearer gsk-test-not-a-real-key"  # type: ignore[attr-defined]
+    # Cloudflare in front of Groq refuses urllib's default "Python-urllib" agent.
+    assert request.get_header("User-agent", "").startswith("AgentFlow/")  # type: ignore[attr-defined]
 
 
 def test_check_llm_names_available_models_when_groq_model_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,3 +200,16 @@ def test_check_llm_reports_unreachable_groq(monkeypatch: pytest.MonkeyPatch) -> 
     _groq_env(monkeypatch)
     monkeypatch.setattr(llm_module, "urlopen", down)
     assert "Groq API is not reachable" in (llm_module.check_llm() or "")
+
+
+def test_check_llm_does_not_blame_the_key_for_a_403(monkeypatch: pytest.MonkeyPatch) -> None:
+    from urllib.error import HTTPError
+
+    def forbidden(request: object, timeout: float) -> None:
+        raise HTTPError("https://api.groq.com/openai/v1/models", 403, "Forbidden", {}, None)  # type: ignore[arg-type]
+
+    _groq_env(monkeypatch)
+    monkeypatch.setattr(llm_module, "urlopen", forbidden)
+    message = llm_module.check_llm() or ""
+    assert "rejected" not in message
+    assert "HTTP 403" in message

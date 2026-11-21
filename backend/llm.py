@@ -95,13 +95,17 @@ def _check_groq() -> str | None:
     model = os.getenv("LLM_MODEL") or DEFAULT_MODELS["groq"]
     request = Request(  # noqa: S310 - fixed https URL
         _GROQ_MODELS_URL,
-        headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY', '').strip()}"},
+        headers={
+            "Authorization": f"Bearer {os.getenv('GROQ_API_KEY', '').strip()}",
+            # Cloudflare in front of Groq refuses urllib's default agent with a 403.
+            "User-Agent": "AgentFlow/1.0 (+https://github.com/Gninho-silue/agentflow)",
+        },
     )
     try:
         with urlopen(request, timeout=5) as response:  # noqa: S310
             payload = json.loads(response.read())
     except HTTPError as exc:
-        if exc.code in (401, 403):
+        if exc.code == 401:
             return "The GROQ_API_KEY was rejected by Groq. Create a new key in the Groq console."
         return f"The Groq API answered with HTTP {exc.code}."
     except Exception:  # noqa: BLE001 - network failure, invalid JSON...
