@@ -9,8 +9,10 @@
 
 from __future__ import annotations
 
+import json
 import os
-from urllib.request import urlopen
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from langchain_core.language_models import BaseChatModel
 
@@ -61,8 +63,8 @@ def get_llm() -> BaseChatModel:
 def check_llm() -> str | None:
     """Return None when the configured LLM looks usable, else a message for the user.
 
-    Ollama is probed (``GET /api/tags``, 3 s timeout). Groq is not called: it
-    is only checked for configuration, to avoid spending quota on health checks.
+    Ollama is probed with ``GET /api/tags``; Groq with ``GET /openai/v1/models``,
+    which checks the key and that the model still exists without spending tokens.
     """
 
     try:
@@ -71,8 +73,8 @@ def check_llm() -> str | None:
         return str(exc)
 
     provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower() or "ollama"
-    if provider != "ollama":
-        return None
+    if provider == "groq":
+        return _check_groq()
 
     host = (os.getenv("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
     try:
@@ -84,3 +86,31 @@ def check_llm() -> str | None:
             f"Ollama is not reachable at {host}. Start it with `ollama serve` "
             f"and make sure the model is installed (`ollama pull {model}`)."
         )
+
+
+_GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
+
+
+def _check_groq() -> str | None:
+    model = os.getenv("LLM_MODEL") or DEFAULT_MODELS["groq"]
+    request = Request(  # noqa: S310 - fixed https URL
+        _GROQ_MODELS_URL,
+        headers={"Authorization": f"Bearer {os.getenv('GROQ_API_KEY', '').strip()}"},
+    )
+    try:
+        with urlopen(request, timeout=5) as response:  # noqa: S310
+            payload = json.loads(response.read())
+    except HTTPError as exc:
+        if exc.code in (401, 403):
+            return "The GROQ_API_KEY was rejected by Groq. Create a new key in the Groq console."
+        return f"The Groq API answered with HTTP {exc.code}."
+    except Exception:  # noqa: BLE001 - network failure, invalid JSON...
+        return "The Groq API is not reachable right now. Try again in a moment."
+
+    available = sorted(str(item.get("id")) for item in payload.get("data", []) if isinstance(item, dict))
+    if model not in available:
+        return (
+            f"The model '{model}' is not available on Groq. Set LLM_MODEL to one of: "
+            f"{', '.join(available) or 'none listed'}."
+        )
+    return None

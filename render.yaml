@@ -15,8 +15,10 @@ services:
         value: "8000"
       - key: LLM_PROVIDER
         value: groq
+      # Groq retires models over time: pick a current one in the dashboard.
+      # /health/ready lists the available models if this one is gone.
       - key: LLM_MODEL
-        value: llama-3.3-70b-versatile
+        sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: CORS_ORIGINS

@@ -155,6 +155,7 @@ def test_render_blueprint_is_safe_and_complete() -> None:
     # Secrets are never written in the repo: filled in the Render dashboard.
     assert env["GROQ_API_KEY"] == {"key": "GROQ_API_KEY", "sync": False}
     assert env["CORS_ORIGINS"] == {"key": "CORS_ORIGINS", "sync": False}
+    assert env["LLM_MODEL"] == {"key": "LLM_MODEL", "sync": False}
     assert env["METRICS_TOKEN"] == {"key": "METRICS_TOKEN", "generateValue": True}
     assert int(env["SANDBOX_MEMORY_MB"]["value"]) <= 512
 

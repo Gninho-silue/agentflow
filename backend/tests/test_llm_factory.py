@@ -125,7 +125,76 @@ def test_check_llm_reports_configuration_errors(monkeypatch: pytest.MonkeyPatch)
     assert "GROQ_API_KEY" in (llm_module.check_llm() or "")
 
 
-def test_check_llm_trusts_groq_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+class _GroqModels:
+    """Fake response of GET https://api.groq.com/openai/v1/models."""
+
+    def __init__(self, ids: list[str]) -> None:
+        import json
+
+        self.body = json.dumps({"data": [{"id": model_id} for model_id in ids]}).encode()
+
+    def __enter__(self) -> "_GroqModels":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self.body
+
+
+def _groq_env(monkeypatch: pytest.MonkeyPatch, model: str | None = None) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "groq")
     monkeypatch.setenv("GROQ_API_KEY", "gsk-test-not-a-real-key")
+    if model:
+        monkeypatch.setenv("LLM_MODEL", model)
+
+
+def test_check_llm_accepts_an_available_groq_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+
+    def fake_urlopen(request: object, timeout: float) -> _GroqModels:
+        seen.append(request)
+        return _GroqModels(["openai/gpt-oss-120b", "llama-3.3-70b-versatile"])
+
+    _groq_env(monkeypatch)
+    monkeypatch.setattr(llm_module, "urlopen", fake_urlopen)
+
     assert llm_module.check_llm() is None
+    request = seen[0]
+    assert request.full_url == "https://api.groq.com/openai/v1/models"  # type: ignore[attr-defined]
+    assert request.get_header("Authorization") == "Bearer gsk-test-not-a-real-key"  # type: ignore[attr-defined]
+
+
+def test_check_llm_names_available_models_when_groq_model_is_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    _groq_env(monkeypatch, "llama-3.3-70b-versatile")
+    monkeypatch.setattr(llm_module, "urlopen", lambda request, timeout: _GroqModels(["model-b", "model-a"]))
+
+    message = llm_module.check_llm() or ""
+    assert "llama-3.3-70b-versatile" in message
+    assert "not available on Groq" in message
+    assert "model-a, model-b" in message
+    assert "LLM_MODEL" in message
+
+
+def test_check_llm_reports_a_rejected_groq_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from urllib.error import HTTPError
+
+    def unauthorized(request: object, timeout: float) -> None:
+        raise HTTPError("https://api.groq.com/openai/v1/models", 401, "Unauthorized", {}, None)  # type: ignore[arg-type]
+
+    _groq_env(monkeypatch)
+    monkeypatch.setattr(llm_module, "urlopen", unauthorized)
+
+    message = llm_module.check_llm() or ""
+    assert "GROQ_API_KEY was rejected" in message
+    assert "gsk-test" not in message  # never echo the key
+
+
+def test_check_llm_reports_unreachable_groq(monkeypatch: pytest.MonkeyPatch) -> None:
+    def down(request: object, timeout: float) -> None:
+        raise OSError("timed out")
+
+    _groq_env(monkeypatch)
+    monkeypatch.setattr(llm_module, "urlopen", down)
+    assert "Groq API is not reachable" in (llm_module.check_llm() or "")
