@@ -20,7 +20,7 @@ Planner → FileAgent → CodeAgent → Reporter → Supervisor
 | -------------- | ---------------------------------------------------------------------- |
 | **Planner**    | Decomposes the task into subtasks and assigns them to the right agents |
 | **FileAgent**  | Reads and parses uploaded files (CSV, JSON, TXT)                       |
-| **CodeAgent**  | Generates and executes Python code (restricted, not yet isolated)      |
+| **CodeAgent**  | Generates Python code and runs it in an isolated subprocess sandbox    |
 | **Reporter**   | Aggregates all outputs into a clean Markdown report                    |
 | **Supervisor** | Monitors workflow state, handles errors, decides completion            |
 
@@ -111,6 +111,46 @@ GitHub Actions runs both suites (plus the frontend build) on every push and pull
 
 ---
 
+## 🔒 Security model
+
+The CodeAgent runs Python written by an LLM, so that code is treated as
+untrusted. It never runs inside the API server process:
+
+| Layer | What it does |
+| --- | --- |
+| **Separate process** | Each run starts a fresh `python -I -S -B` process with an **empty environment** (no `GROQ_API_KEY`, no server secrets). |
+| **Throw-away working dir** | The `cwd` is a new temporary directory holding only a **copy** of the uploaded file. Charts are collected from it, then it is deleted. |
+| **Audit hook** (`sys.addaudithook`) | Installed after the trusted imports. Refuses reading files outside the working dir and the Python installation, writing outside the working dir, sockets / HTTP, `subprocess`, `os.system`, `fork`/`exec`, `ctypes`, `gc.get_objects` and changing resource limits. |
+| **Resource limits** (Linux) | `setrlimit` on CPU time, address space (1 GB), file size (20 MB) and **no new processes or threads**. Soft = hard, so the code cannot raise them. |
+| **Hard timeout** | 5 s of execution (after start-up), then the whole process group is killed. The server stays responsive. |
+| **Restricted builtins** | No `open`, `eval`, `exec`, `__import__` of arbitrary modules (only pandas, numpy, matplotlib, math, re, statistics). Defense in depth, not the boundary. |
+| **Container** | The Docker image runs as an unprivileged user (uid 10001), with a read-only root filesystem: only `/tmp` and the uploads/data volumes are writable. |
+
+All of this is covered by attack tests in
+[`backend/tests/test_sandbox_attacks.py`](backend/tests/test_sandbox_attacks.py):
+reading `/etc/passwd`, the backend source or a file outside the work dir, writing
+outside it, `__subclasses__` / `__globals__` escapes, opening a socket, starting a
+subprocess, infinite loops, massive allocations and reading environment variables.
+CI runs them on Linux, including inside the production image as the non-root user.
+
+**Limits, honestly:**
+
+- This is a **defense-in-depth sandbox for a portfolio demo, not production-grade
+  multi-tenant isolation**. Audit hooks run inside the same interpreter as the
+  untrusted code; a CPython memory-corruption bug could bypass them. Serious
+  multi-tenant use needs a kernel-level boundary (gVisor, Firecracker, a hosted
+  sandbox such as E2B). The `Sandbox` interface (`backend/sandbox/base.py`)
+  exists so one can be plugged in without touching the agents.
+- On **Windows** (local development only) `setrlimit` does not exist: memory and
+  process-count limits are not enforced; the timeout, audit hook and empty
+  environment still apply.
+
+Tunable with environment variables: `SANDBOX_TIMEOUT_SECONDS` (5),
+`SANDBOX_MEMORY_MB` (1024), `SANDBOX_MAX_FILE_MB` (20),
+`SANDBOX_STARTUP_TIMEOUT_SECONDS` (60).
+
+---
+
 ## 📋 Usage
 
 1. **Describe your task** in the text area (e.g. _"Analyze this CSV, calculate revenue by category, identify top 5 products"_)
@@ -143,7 +183,9 @@ agentflow/
 │   ├── agents/          # Planner, FileAgent, CodeAgent, Reporter, Supervisor
 │   ├── graph/           # LangGraph workflow + AgentState
 │   ├── api/             # FastAPI routes + WebSocket handler
-│   ├── tools/           # File parsing, code execution, chart generation
+│   ├── sandbox/         # Isolated execution of generated code (Sandbox interface)
+│   ├── tests/           # pytest suite (fake LLM, sandbox attack tests)
+│   ├── tools/           # File parsing, code executor entry point
 │   ├── models/          # SQLAlchemy task model
 │   └── main.py
 ├── frontend/
@@ -166,7 +208,6 @@ agentflow/
 
 ## 🔮 Roadmap
 
-- [ ] Add chart/visualization output (matplotlib integration)
 - [ ] Support PDF file parsing
 - [ ] Add streaming token output in the result viewer
 - [ ] Deploy on Railway with persistent storage

@@ -1,22 +1,26 @@
 services:
   backend:
-    image: python:3.11-slim
-    working_dir: /app
-    command: sh -c "pip install --no-cache-dir -r backend/requirements.txt && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
     ports:
       - "8000:8000"
+    # Non-root user (set in the image) and a read-only root filesystem:
+    # only /tmp (sandbox working dirs) and the two volumes are writable.
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
     volumes:
-      - .:/app
-      - ./uploads:/app/uploads
+      - agentflow_uploads:/app/uploads
+      - agentflow_data:/app/data
     environment:
-      - PYTHONUNBUFFERED=1
       - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   frontend:
     image: node:20-alpine
@@ -32,4 +36,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  agentflow_data:
+  agentflow_uploads:
   frontend_node_modules:

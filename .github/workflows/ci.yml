@@ -28,6 +28,18 @@ jobs:
       - name: Run tests
         run: pytest -q
 
+  docker:
+    name: Backend image (tests as non-root)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build test image
+        run: docker build -f backend/Dockerfile --target test -t agentflow-backend-test .
+      - name: Run tests inside the image
+        run: docker run --rm agentflow-backend-test
+      - name: Build runtime image
+        run: docker build -f backend/Dockerfile --target runtime -t agentflow-backend .
+
   frontend:
     name: Frontend (lint, typecheck, vitest, build)
     runs-on: ubuntu-latest

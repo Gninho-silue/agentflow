@@ -38,7 +38,7 @@
   - Reste noté pour plus tard : `ValueError` & co. absents des builtins autorisés (le code généré ne peut pas lever d'exception explicite) ; renderer `code` de `ResultViewer` typé `any` (react-markdown v9 ne passe plus `inline`).
 
 ## Étape 2 — Vraie isolation du code généré (TDD, priorité absolue)
-- [ ] Écrire d'abord les tests d'attaque, qui doivent **échouer** avec l'exécuteur actuel :
+- [x] Écrire d'abord les tests d'attaque, qui doivent **échouer** avec l'exécuteur actuel :
   - lecture d'un fichier hors du dossier de travail (`/etc/passwd`, fichier `.env` du backend) ;
   - écriture d'un fichier hors du dossier de travail ;
   - évasion par `__subclasses__` / `__globals__` ;
@@ -47,11 +47,18 @@
   - boucle infinie (doit être **tuée** sous 10 s, le serveur reste réactif) ;
   - allocation mémoire massive (doit être tuée, le serveur survit) ;
   - variables d'environnement du serveur (ex. `GROQ_API_KEY`) invisibles depuis le code exécuté.
-- [ ] Nouvelle implémentation : exécution dans un **sous-processus séparé** (`python -I -S`), dossier temporaire dédié comme `cwd` contenant uniquement une **copie** du fichier uploadé, `env` vide, limites `resource` (CPU, mémoire, nombre de processus, taille de fichier), timeout dur avec `kill`, + `sys.addaudithook` dans l'enfant pour refuser `open` hors du dossier temporaire, `socket.*`, `subprocess.*`, `os.system`. Sortie (stdout, graphiques) récupérée via le dossier temporaire, puis dossier supprimé.
-- [ ] Docker : backend en utilisateur non-root, système de fichiers en lecture seule sauf `/tmp` et le dossier des uploads.
-- [ ] Interface `Sandbox` pour pouvoir brancher plus tard un service externe (E2B, etc.) sans toucher aux agents.
-- [ ] README : section « Security model » honnête (ce qui est bloqué, et que ce n'est pas une isolation de niveau production multi-tenant).
-- [ ] Commit : `feat(security): run generated code in an isolated subprocess` → push.
+- [x] Nouvelle implémentation : exécution dans un **sous-processus séparé** (`python -I -S`), dossier temporaire dédié comme `cwd` contenant uniquement une **copie** du fichier uploadé, `env` vide, limites `resource` (CPU, mémoire, nombre de processus, taille de fichier), timeout dur avec `kill`, + `sys.addaudithook` dans l'enfant pour refuser `open` hors du dossier temporaire, `socket.*`, `subprocess.*`, `os.system`. Sortie (stdout, graphiques) récupérée via le dossier temporaire, puis dossier supprimé.
+- [x] Docker : backend en utilisateur non-root, système de fichiers en lecture seule sauf `/tmp` et le dossier des uploads.
+- [x] Interface `Sandbox` pour pouvoir brancher plus tard un service externe (E2B, etc.) sans toucher aux agents.
+- [x] README : section « Security model » honnête (ce qui est bloqué, et que ce n'est pas une isolation de niveau production multi-tenant).
+- [x] Commit : `feat(security): run generated code in an isolated subprocess` → push.
+- Bilan : 12 tests d'attaque (`backend/tests/test_sandbox_attacks.py`), tous rouges avec l'ancien `exec()` en processus (9 sur Windows ; les 2 tests POSIX vérifiés sous Linux), verts avec `SubprocessSandbox`. 14 tests fonctionnels du sandbox et de l'interface. Total backend : 76 tests, verts sous Linux en non-root dans l'image Docker.
+  - Le timeout (5 s par défaut) démarre après le verrouillage de l'enfant ; le démarrage de confiance (imports, cache de polices) a son propre budget de 60 s.
+  - `chart_generator.py` supprimé : il faisait lui aussi un `exec()` dans le serveur. Les graphiques sont maintenant produits dans le sandbox et copiés dans `uploads/`.
+  - `CodeAgent.run` renvoie aussi `error` et `traceback` (traceback limité au code généré), prêt pour l'étape 3.
+  - `DATABASE_URL` configurable (racine en lecture seule dans Docker). Job CI `docker` : tests lancés dans l'image en non-root.
+  - Builtins autorisés élargis (`isinstance`, `map`, `filter`, `ValueError`, etc.) maintenant que l'isolation est réelle.
+  - Limite connue : sous Windows (dev local), pas de limite mémoire ni de nombre de processus (pas de `setrlimit`).
 
 ## Étape 3 — Boucle d'auto-correction du CodeAgent (TDD)
 - [ ] Si le code généré lève une erreur, renvoyer le code + la traceback au LLM et demander une correction ; **3 tentatives max**.

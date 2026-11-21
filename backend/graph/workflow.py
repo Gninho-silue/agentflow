@@ -137,7 +137,11 @@ def _code_node(code_agent: CodeAgent) -> Any:
 
     def node(state: AgentState) -> AgentState:
         try:
-            result = code_agent.run(task=state["task"], file_data=state.get("file_data"))
+            result = code_agent.run(
+                task=state["task"],
+                file_data=state.get("file_data"),
+                file_path=state.get("file_path"),
+            )
             messages = state.get("messages", [])
             messages.append(AIMessage(content=f"CodeAgent completed. Success: {result['success']}"))
             return {

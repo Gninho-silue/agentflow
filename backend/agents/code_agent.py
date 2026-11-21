@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import re
 import uuid
+from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
 from backend.tools.code_executor import CodeExecutor
-from backend.tools.chart_generator import generate_chart_from_code
 
 
+# Cheap pre-filter that rejects obviously malicious code before spawning a
+# sandbox. It is NOT the security boundary: see backend/sandbox.
 _BLOCKED_PATTERNS: tuple[str, ...] = (
     "subprocess",
     "os.system",
@@ -28,11 +29,11 @@ _BLOCKED_PATTERNS: tuple[str, ...] = (
     "socket",
 )
 
-_EXEC_TIMEOUT_SECONDS = 30
+_CHART_DIR = Path("uploads")
 
 
 class CodeAgent:
-    """Generate Python code with Ollama and execute it with restricted globals."""
+    """Generate Python code with the LLM and run it in an isolated sandbox."""
 
     def __init__(self, llm: ChatOllama | None = None, executor: CodeExecutor | None = None) -> None:
         """Create a code agent that uses a local Ollama llama3.2 model."""
@@ -40,8 +41,17 @@ class CodeAgent:
         self.llm = llm or ChatOllama(model="llama3.2:1b")
         self.executor = executor or CodeExecutor()
 
-    def run(self, task: str, file_data: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Generate and execute Python code for the provided task and data."""
+    def run(
+        self,
+        task: str,
+        file_data: dict[str, Any] | None = None,
+        file_path: str | None = None,
+    ) -> dict[str, Any]:
+        """Generate Python code for the task and execute it in the sandbox.
+
+        ``file_path`` (the uploaded file) is copied into the sandbox's working
+        directory; the server copy is never exposed.
+        """
 
         try:
             code = self.generate_code(task=task, file_data=file_data)
@@ -59,23 +69,27 @@ class CodeAgent:
             if needs_chart and not self._contains_chart_code(code):
                 code = self._fallback_chart_code(file_data)
 
-            chart_path = generate_chart_from_code(
-                code=self._prepare_chart_code(code),
-                file_data=file_data,
-                task_id=str(uuid.uuid4()),
-            )
+            input_files = [Path(file_path)] if file_path and Path(file_path).is_file() else None
+            result = self.executor.run(code, file_data, input_files=input_files)
+            chart_path = self._save_chart(result.images)
 
-            if needs_chart:
-                try:
-                    output = self.execute_code(code=code, file_data=file_data)
-                except Exception:
-                    output = "Chart generated successfully." if chart_path else "Chart generation was requested but no chart was produced."
+            if result.ok:
+                output = result.stdout or ("Chart generated successfully." if chart_path else "")
+                success = True
+            elif needs_chart and chart_path:
+                output, success = "Chart generated successfully.", True
             else:
-                output = self.execute_code(code=code, file_data=file_data)
+                output, success = result.error or "Execution failed.", False
 
             if chart_path:
                 output = f"{output}\n\n[chart_path]: {chart_path}".strip()
-            return {"code": code, "output": output, "success": True}
+            return {
+                "code": code,
+                "output": output,
+                "success": success,
+                "error": None if success else result.error,
+                "traceback": None if success else result.traceback,
+            }
         except Exception as exc:
             print(f"[CodeAgent] Error: {exc}")
             return {"code": "", "output": str(exc), "success": False}
@@ -130,21 +144,12 @@ Write ONLY the Python code, no explanation, no markdown backticks.
         code = self._strip_code_fence(str(response.content).strip())
         return self._ensure_dataframe_setup(code=code, file_data=file_data)
 
-    def execute_code(self, code: str, file_data: dict[str, Any] | None = None) -> str:
-        """Execute generated code with restricted builtins and a 30-second timeout."""
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(self.executor.execute, code, file_data)
-            try:
-                return future.result(timeout=_EXEC_TIMEOUT_SECONDS)
-            except concurrent.futures.TimeoutError:
-                print(f"[CodeAgent] Execution timed out after {_EXEC_TIMEOUT_SECONDS}s.")
-                return f"Code execution timed out after {_EXEC_TIMEOUT_SECONDS} seconds."
-
-    def __call__(self, task: str, file_data: dict[str, Any] | None = None) -> dict[str, Any]:
+    def __call__(
+        self, task: str, file_data: dict[str, Any] | None = None, file_path: str | None = None
+    ) -> dict[str, Any]:
         """Run analysis when the agent instance is called directly."""
 
-        return self.run(task=task, file_data=file_data)
+        return self.run(task=task, file_data=file_data, file_path=file_path)
 
     def _is_safe_code(self, code: str) -> bool:
         """Return False when the code contains dangerous patterns."""
@@ -199,12 +204,15 @@ Write ONLY the Python code, no explanation, no markdown backticks.
         setup = "df = pd.DataFrame(file_data.get('rows', []), columns=file_data.get('columns', []))"
         return f"{setup}\n{code}"
 
-    def _prepare_chart_code(self, code: str) -> str:
-        """Let chart_generator inject the real uploads save path."""
+    def _save_chart(self, images: list[bytes]) -> str | None:
+        """Store the first image produced in the sandbox under uploads/."""
 
-        # The comment must not contain "plt.savefig", otherwise chart_generator
-        # thinks the code already saves the figure and never injects the real call.
-        return re.sub(r"plt\.savefig\s*\([^\n]*\)", "# figure saving handled by AgentFlow", code)
+        if not images:
+            return None
+        _CHART_DIR.mkdir(parents=True, exist_ok=True)
+        path = _CHART_DIR / f"chart_{uuid.uuid4()}.png"
+        path.write_bytes(images[0])
+        return path.as_posix()
 
     def _fallback_chart_code(self, file_data: dict[str, Any] | None) -> str:
         """Generate a minimal matplotlib chart when the LLM ignores chart instructions."""
