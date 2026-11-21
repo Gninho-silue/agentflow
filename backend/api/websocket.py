@@ -6,7 +6,7 @@ import asyncio
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.api.routes import TASK_EVENTS, get_task_response
+from backend.api.routes import TASK_EVENTS, get_task_response, owner_hash
 from backend.observability import logger, task_context
 
 
@@ -14,15 +14,21 @@ router = APIRouter()
 
 
 @router.websocket("/ws/{task_id}")
-async def task_websocket(websocket: WebSocket, task_id: str) -> None:
-    """Stream task progress events to a frontend client."""
+async def task_websocket(websocket: WebSocket, task_id: str, client_id: str | None = None) -> None:
+    """Stream task progress events to the visitor who owns the task.
+
+    Browsers cannot set headers on WebSockets, so the visitor id comes as ``?client_id=``.
+    """
 
     await websocket.accept()
+    owner = owner_hash(client_id)
     last_index = 0
     try:
         while True:
             try:
-                task = get_task_response(task_id)
+                if owner is None:
+                    raise LookupError("missing visitor id")
+                task = get_task_response(task_id, owner)
             except Exception:
                 await websocket.send_json({"type": "error", "message": "Task not found."})
                 await websocket.close()

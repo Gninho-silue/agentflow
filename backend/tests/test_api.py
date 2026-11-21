@@ -97,7 +97,7 @@ def test_code_attempts_are_persisted_and_streamed(
     assert "ZeroDivisionError" in attempt_events[0]["traceback"]
     assert attempt_events[1]["error"] is None
 
-    with client.websocket_connect(f"/ws/{task_id}") as ws:
+    with client.websocket_connect(f"/ws/{task_id}?client_id={client.headers['X-Client-ID']}") as ws:
         streamed = []
         while (message := ws.receive_json())["type"] != "complete":
             streamed.append(message)
@@ -148,8 +148,9 @@ def test_status_unknown_task_returns_404(client: TestClient) -> None:
 
 def test_execute_with_file_path_updates_task(client: TestClient) -> None:
     task_id = create(client)
-    client.post(f"/api/tasks/{task_id}/execute", json={"file_path": "uploads/data.csv"})
-    assert client.get(f"/api/tasks/{task_id}/status").json()["file_path"] == "uploads/data.csv"
+    upload = client.post("/api/upload", files={"file": ("data.csv", b"a\n1\n", "text/csv")}).json()["file_path"]
+    client.post(f"/api/tasks/{task_id}/execute", json={"file_path": upload})
+    assert client.get(f"/api/tasks/{task_id}/status").json()["file_path"] == upload
 
 
 def test_workflow_crash_marks_task_as_error(
@@ -284,7 +285,7 @@ def test_websocket_streams_events_then_final_task(client: TestClient) -> None:
     client.post(f"/api/tasks/{task_id}/execute")
 
     messages = []
-    with client.websocket_connect(f"/ws/{task_id}") as ws:
+    with client.websocket_connect(f"/ws/{task_id}?client_id={client.headers['X-Client-ID']}") as ws:
         while True:
             message = ws.receive_json()
             messages.append(message)

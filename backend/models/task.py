@@ -21,6 +21,8 @@ class Task(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     task: Mapped[str] = mapped_column(Text, nullable=False)
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # SHA-256 of the visitor's X-Client-ID: each visitor only sees their own tasks.
+    owner_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

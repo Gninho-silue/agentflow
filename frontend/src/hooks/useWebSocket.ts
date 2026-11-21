@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AgentName, AgentProgress, AgentStatus, CodeAttempt, TaskRecord } from "../types";
-import { WS_BASE } from "../config";
+import { wsUrl } from "../api";
 
 const initialAgents: AgentProgress[] = [
   { agent: "planner", status: "idle", message: "Waiting for task." },
@@ -55,7 +55,7 @@ export function useWebSocket(taskId: string | null): {
       return;
     }
 
-    const socket = new WebSocket(`${WS_BASE}/ws/${taskId}`);
+    const socket = new WebSocket(wsUrl(taskId));
     socket.onopen = () => setConnected(true);
     socket.onclose = () => setConnected(false);
     socket.onerror = () => setConnected(false);

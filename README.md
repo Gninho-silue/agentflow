@@ -126,6 +126,13 @@ writing outside it, `__subclasses__` / `__globals__` escapes, sockets, subproces
 infinite loops, massive allocations and environment variables. CI runs them on Linux,
 including inside the production image as the non-root user.
 
+**Visitors are isolated from each other.** The browser creates a random visitor id
+(kept in `localStorage`) and sends it as `X-Client-ID`; the backend stores only its
+SHA-256 hash on each task. Listing, status, deletion, "Clear all" and the WebSocket
+only reach the visitor's own tasks; anyone else's look like they do not exist (404).
+A task's `file_path` must be a file returned by `/api/upload`, so the API cannot be
+used to read files from the server.
+
 The public demo also limits task creation to 10 per minute per IP, uploads to 5 MB,
 and deletes tasks and files after 24 hours.
 
@@ -163,9 +170,9 @@ and disk space, reports the deployed commit, and answers `503` when something is
 ## Tests, CI and CD
 
 Tests never call a real LLM: agents are driven by scripted fake models, so the suites
-run offline. **140 backend tests** (pytest: planner parsing, LangGraph routing, API,
-WebSocket, sandbox attacks, self-correction, observability, deployment settings) and
-**44 frontend tests** (Vitest + Testing Library).
+run offline. **161 backend tests** (pytest: planner parsing, LangGraph routing, API,
+WebSocket, sandbox attacks, visitor isolation, self-correction, observability, deployment) and
+**54 frontend tests** (Vitest + Testing Library).
 
 ```bash
 pip install -r backend/requirements-dev.txt

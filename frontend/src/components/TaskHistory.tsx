@@ -1,8 +1,8 @@
 import { Trash2 } from "lucide-react";
+import { apiFetch } from "../api";
 import type { TaskRecord } from "../types";
 
 interface TaskHistoryProps {
-  apiBase: string;
   selectedTaskId: string | null;
   tasks: TaskRecord[];
   onSelect: (task: TaskRecord) => void;
@@ -11,7 +11,6 @@ interface TaskHistoryProps {
 }
 
 export function TaskHistory({
-  apiBase,
   selectedTaskId,
   tasks,
   onSelect,
@@ -19,17 +18,17 @@ export function TaskHistory({
   onAllTasksDeleted,
 }: TaskHistoryProps): JSX.Element {
   const deleteTask = async (taskId: string) => {
-    const response = await fetch(`${apiBase}/api/tasks/${taskId}`, { method: "DELETE" });
+    const response = await apiFetch(`/api/tasks/${taskId}`, { method: "DELETE" });
     if (response.ok) {
       onTaskDeleted(taskId);
     }
   };
 
   const clearAll = async () => {
-    if (!window.confirm("Delete all history?")) {
+    if (!window.confirm("Delete all your tasks? This cannot be undone.")) {
       return;
     }
-    const response = await fetch(`${apiBase}/api/tasks`, { method: "DELETE" });
+    const response = await apiFetch("/api/tasks", { method: "DELETE" });
     if (response.ok) {
       onAllTasksDeleted();
     }
@@ -37,13 +36,22 @@ export function TaskHistory({
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3 px-2">
         <h2 className="text-[13px] font-medium text-ink">Recent tasks</h2>
+        {tasks.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => void clearAll()}
+            className="rounded-md px-2 py-1 text-xs font-medium text-ink-soft transition-colors duration-200 hover:bg-bad/10 hover:text-bad"
+          >
+            Clear all
+          </button>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
         {tasks.length === 0 ? (
-          <p className="rounded-lg px-2 py-3 text-xs text-ink-faint">Tasks you run appear here, so you can reopen their reports.</p>
+          <p className="rounded-lg px-2 py-3 text-xs text-ink-faint">Tasks you run appear here. They are tied to this browser: only you see them.</p>
         ) : (
           tasks.map((task) => (
             <div
@@ -72,15 +80,6 @@ export function TaskHistory({
         )}
       </div>
 
-      {tasks.length > 0 ? (
-        <button
-          type="button"
-          onClick={() => void clearAll()}
-          className="mt-3 w-fit text-xs font-medium text-bad transition-all duration-200 hover:text-bad"
-        >
-          Clear all
-        </button>
-      ) : null}
     </section>
   );
 }

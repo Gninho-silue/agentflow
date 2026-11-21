@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Header, HTTPException, UploadFile
 from langchain_core.messages import BaseMessage, HumanMessage
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -29,8 +31,47 @@ _MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_FILE_SIZE_MB", "10")) * 1024 * 1024
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-router = APIRouter(prefix="/api")
 TASK_EVENTS: dict[str, list[dict[str, Any]]] = {}
+
+_CLIENT_ID = re.compile(r"[A-Za-z0-9_-]{16,128}")
+
+
+def owner_hash(client_id: str | None) -> str | None:
+    """Hash a visitor id; None when it is missing or malformed."""
+
+    if not client_id or not _CLIENT_ID.fullmatch(client_id):
+        return None
+    return hashlib.sha256(client_id.encode()).hexdigest()
+
+
+def current_owner(x_client_id: str | None = Header(default=None)) -> str:
+    """Identify the visitor from the X-Client-ID header (a random id kept by the browser)."""
+
+    owner = owner_hash(x_client_id)
+    if owner is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing or invalid X-Client-ID header (16 to 128 letters, digits, dashes or underscores).",
+        )
+    return owner
+
+
+def _checked_upload_path(file_path: str | None) -> str | None:
+    """Only accept files that were uploaded through /api/upload."""
+
+    if file_path is None:
+        return None
+    try:
+        path = Path(file_path).resolve()
+        path.relative_to(UPLOAD_DIR.resolve())
+    except (ValueError, OSError):
+        raise HTTPException(status_code=400, detail="file_path must be a file returned by /api/upload.")
+    if not path.is_file() or path.suffix.lower() not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="file_path must be a file returned by /api/upload.")
+    return file_path
+
+
+router = APIRouter(prefix="/api")
 
 
 class TaskCreateRequest(BaseModel):
@@ -76,14 +117,19 @@ class TaskResponse(BaseModel):
 
 
 @router.post("/tasks", response_model=TaskCreateResponse)
-async def create_task(payload: TaskCreateRequest, db: Session = Depends(get_db)) -> TaskCreateResponse:
+async def create_task(
+    payload: TaskCreateRequest,
+    db: Session = Depends(get_db),
+    owner: str = Depends(current_owner),
+) -> TaskCreateResponse:
     """Create a new task and return its identifier."""
 
     task_id = str(uuid.uuid4())
     task = Task(
         id=task_id,
         task=payload.task,
-        file_path=payload.file_path,
+        file_path=_checked_upload_path(payload.file_path),
+        owner_hash=owner,
         status="pending",
         agents_used=[],
     )
@@ -99,15 +145,16 @@ async def execute_task(
     background_tasks: BackgroundTasks,
     payload: TaskExecuteRequest | None = None,
     db: Session = Depends(get_db),
+    owner: str = Depends(current_owner),
 ) -> dict[str, str]:
     """Start the agent workflow in the background and return immediately."""
 
-    task = _get_task_model(task_id, db)
+    task = _get_task_model(task_id, db, owner)
     if task.status == "running":
         return {"task_id": task_id, "status": "running"}
 
     if payload is not None and payload.file_path is not None:
-        task.file_path = payload.file_path
+        task.file_path = _checked_upload_path(payload.file_path)
     task.status = "running"
     task.updated_at = datetime.now(timezone.utc)
     db.commit()
@@ -117,14 +164,16 @@ async def execute_task(
 
 
 @router.get("/tasks/{task_id}/status", response_model=TaskResponse)
-async def get_task_status(task_id: str, db: Session = Depends(get_db)) -> TaskResponse:
+async def get_task_status(
+    task_id: str, db: Session = Depends(get_db), owner: str = Depends(current_owner)
+) -> TaskResponse:
     """Return task status and final result when available."""
 
-    return _to_response(_get_task_model(task_id, db))
+    return _to_response(_get_task_model(task_id, db, owner))
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...)) -> dict[str, str]:
+async def upload_file(file: UploadFile = File(...), _owner: str = Depends(current_owner)) -> dict[str, str]:
     """Upload a file for a future AgentFlow task."""
 
     suffix = Path(file.filename or "").suffix.lower()
@@ -156,18 +205,20 @@ async def upload_file(file: UploadFile = File(...)) -> dict[str, str]:
 
 
 @router.get("/tasks", response_model=list[TaskResponse])
-async def list_tasks(db: Session = Depends(get_db)) -> list[TaskResponse]:
-    """List all past tasks, newest first."""
+async def list_tasks(db: Session = Depends(get_db), owner: str = Depends(current_owner)) -> list[TaskResponse]:
+    """List the visitor's past tasks, newest first."""
 
-    tasks = db.scalars(select(Task).order_by(Task.created_at.desc())).all()
+    tasks = db.scalars(select(Task).where(Task.owner_hash == owner).order_by(Task.created_at.desc())).all()
     return [_to_response(task) for task in tasks]
 
 
 @router.delete("/tasks/{task_id}")
-async def delete_task(task_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
-    """Delete a single task from history."""
+async def delete_task(
+    task_id: str, db: Session = Depends(get_db), owner: str = Depends(current_owner)
+) -> dict[str, bool]:
+    """Delete one of the visitor's tasks."""
 
-    task = _get_task_model(task_id, db)
+    task = _get_task_model(task_id, db, owner)
     db.delete(task)
     db.commit()
     TASK_EVENTS.pop(task_id, None)
@@ -175,23 +226,23 @@ async def delete_task(task_id: str, db: Session = Depends(get_db)) -> dict[str, 
 
 
 @router.delete("/tasks")
-async def delete_all_tasks(db: Session = Depends(get_db)) -> dict[str, int]:
-    """Delete all task history records."""
+async def delete_all_tasks(db: Session = Depends(get_db), owner: str = Depends(current_owner)) -> dict[str, int]:
+    """Delete the visitor's own history (never other visitors' tasks)."""
 
-    tasks = db.scalars(select(Task)).all()
+    tasks = db.scalars(select(Task).where(Task.owner_hash == owner)).all()
     deleted_count = len(tasks)
     for task in tasks:
+        TASK_EVENTS.pop(task.id, None)
         db.delete(task)
     db.commit()
-    TASK_EVENTS.clear()
     return {"deleted": deleted_count}
 
 
-def get_task_response(task_id: str) -> TaskResponse:
-    """Fetch a task response outside request dependency injection."""
+def get_task_response(task_id: str, owner: str | None = None) -> TaskResponse:
+    """Fetch a task outside dependency injection; with ``owner``, only that visitor's task."""
 
     with SessionLocal() as db:
-        return _to_response(_get_task_model(task_id, db))
+        return _to_response(_get_task_model(task_id, db, owner))
 
 
 def _run_workflow(task_id: str) -> None:
@@ -297,11 +348,11 @@ def _execute_workflow(task_id: str) -> str:
         db.close()
 
 
-def _get_task_model(task_id: str, db: Session) -> Task:
-    """Fetch a task model or raise a 404 error."""
+def _get_task_model(task_id: str, db: Session, owner: str | None = None) -> Task:
+    """Fetch a task or raise 404; with ``owner``, other visitors' tasks look missing."""
 
     task = db.get(Task, task_id)
-    if task is None:
+    if task is None or (owner is not None and task.owner_hash != owner):
         raise HTTPException(status_code=404, detail="Task not found.")
     return task
 

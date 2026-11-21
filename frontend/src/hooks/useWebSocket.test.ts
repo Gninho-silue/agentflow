@@ -78,7 +78,7 @@ describe("useWebSocket", () => {
     const { result } = renderHook(() => useWebSocket("t1"));
     const socket = latestSocket();
 
-    expect(socket.url).toMatch(/\/ws\/t1$/);
+    expect(socket.url).toMatch(/\/ws\/t1\?client_id=[A-Za-z0-9_-]{16,}$/);
     socket.open();
     expect(result.current.connected).toBe(true);
   });
@@ -214,7 +214,7 @@ describe("useWebSocket", () => {
     rerender({ id: "t2" });
 
     expect(first.closed).toBe(true);
-    expect(latestSocket().url).toMatch(/\/ws\/t2$/);
+    expect(latestSocket().url).toMatch(/\/ws\/t2\?client_id=[A-Za-z0-9_-]{16,}$/);
     expect(result.current.task).toBeNull();
     expect(new Set(Object.values(statusOf(result)))).toEqual(new Set(["idle"]));
   });

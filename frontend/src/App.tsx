@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AgentPipeline } from "./components/AgentPipeline";
 import { BackendBanner, BackendStatusPill } from "./components/BackendStatus";
+import { apiFetch } from "./api";
 import { API_BASE } from "./config";
 import { ExamplePicker } from "./components/ExamplePicker";
 import { ResultViewer } from "./components/ResultViewer";
@@ -23,7 +24,7 @@ export default function App(): JSX.Element {
 
   const loadHistory = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/tasks`);
+      const response = await apiFetch("/api/tasks");
       if (response.ok) {
         setHistory((await response.json()) as TaskRecord[]);
       }
@@ -52,14 +53,14 @@ export default function App(): JSX.Element {
       if (file) {
         const formData = new FormData();
         formData.append("file", file);
-        const uploadResponse = await fetch(`${API_BASE}/api/upload`, { method: "POST", body: formData });
+        const uploadResponse = await apiFetch("/api/upload", { method: "POST", body: formData });
         if (!uploadResponse.ok) {
           throw new Error(await errorDetail(uploadResponse, "The file could not be uploaded."));
         }
         filePath = ((await uploadResponse.json()) as { file_path: string }).file_path;
       }
 
-      const createResponse = await fetch(`${API_BASE}/api/tasks`, {
+      const createResponse = await apiFetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task: taskText, file_path: filePath }),
@@ -70,7 +71,7 @@ export default function App(): JSX.Element {
       const created = (await createResponse.json()) as { task_id: string };
       setTaskId(created.task_id);
 
-      const executeResponse = await fetch(`${API_BASE}/api/tasks/${created.task_id}/execute`, {
+      const executeResponse = await apiFetch(`/api/tasks/${created.task_id}/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ file_path: filePath }),
@@ -134,7 +135,6 @@ export default function App(): JSX.Element {
           <TaskInput onRun={runTask} loading={loading} error={apiError} preset={preset} />
           <div className="hidden min-h-0 flex-1 lg:block">
             <TaskHistory
-              apiBase={API_BASE}
               selectedTaskId={selectedTask?.task_id ?? null}
               tasks={history}
               onSelect={selectTask}
@@ -154,8 +154,7 @@ export default function App(): JSX.Element {
             )}
             <div className="lg:hidden">
               <TaskHistory
-                apiBase={API_BASE}
-                selectedTaskId={selectedTask?.task_id ?? null}
+                  selectedTaskId={selectedTask?.task_id ?? null}
                 tasks={history}
                 onSelect={selectTask}
                 onTaskDeleted={handleTaskDeleted}

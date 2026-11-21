@@ -16,6 +16,7 @@ import json
 import re
 import sys
 import time
+import uuid
 from collections.abc import Callable
 from typing import Any
 from urllib.error import HTTPError
@@ -25,6 +26,8 @@ Http = Callable[..., tuple[int, Any]]
 
 TASK = {"task": "Compute 6 times 7 with Python and report the result in one sentence."}
 _USER_AGENT = "AgentFlow-smoke-test/1.0"
+# Tasks are private to a visitor id; each smoke run is its own visitor.
+_CLIENT_ID = f"smoke-{uuid.uuid4().hex}"
 
 
 class SmokeTestError(RuntimeError):
@@ -35,7 +38,7 @@ def http(method: str, url: str, body: dict | None = None) -> tuple[int, Any]:
     """Tiny JSON/text HTTP client; returns (status, parsed JSON or text)."""
 
     data = json.dumps(body).encode() if body is not None else None
-    request = Request(url, data=data, method=method, headers={"User-Agent": _USER_AGENT})
+    request = Request(url, data=data, method=method, headers={"User-Agent": _USER_AGENT, "X-Client-ID": _CLIENT_ID})
     if data is not None:
         request.add_header("Content-Type", "application/json")
     try:

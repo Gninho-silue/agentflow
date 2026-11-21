@@ -73,6 +73,7 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator["TestCli
     routes.TASK_EVENTS.clear()
 
     with TestClient(main.app) as test_client:
+        test_client.headers["X-Client-ID"] = "test-visitor-0123456789abcdef"
         yield test_client
 
     main.app.dependency_overrides.clear()
