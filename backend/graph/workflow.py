@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from langchain_ollama import ChatOllama
 from langgraph.graph import END, StateGraph
@@ -19,10 +20,14 @@ from backend.graph.state import AgentState
 LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 
-def create_workflow() -> Any:
-    """Build and compile the AgentFlow StateGraph."""
+def create_workflow(llm: BaseChatModel | None = None) -> Any:
+    """Build and compile the AgentFlow StateGraph.
 
-    llm = ChatOllama(model=LLM_MODEL)
+    ``llm`` can be injected (tests pass a scripted fake model); it defaults to
+    the local Ollama model.
+    """
+
+    llm = llm or ChatOllama(model=LLM_MODEL)
     planner = PlannerAgent(llm=llm)
     file_agent = FileAgent()
     code_agent = CodeAgent(llm=llm)
@@ -45,9 +50,17 @@ def create_workflow() -> Any:
             "end": END,
         },
     )
-    graph.add_edge("file_agent", "code_agent")
-    graph.add_edge("code_agent", "reporter")
-    graph.add_edge("reporter", "supervisor")
+    # A failing agent ends the run in a clean "error" state instead of letting
+    # the next agent overwrite the status (or the supervisor loop forever).
+    graph.add_conditional_edges(
+        "file_agent", _continue_unless_error("code_agent"), {"code_agent": "code_agent", "end": END}
+    )
+    graph.add_conditional_edges(
+        "code_agent", _continue_unless_error("reporter"), {"reporter": "reporter", "end": END}
+    )
+    graph.add_conditional_edges(
+        "reporter", _continue_unless_error("supervisor"), {"supervisor": "supervisor", "end": END}
+    )
     graph.add_conditional_edges(
         "supervisor",
         _route_from_supervisor,
@@ -91,7 +104,7 @@ def _file_node(file_agent: FileAgent) -> Any:
 
     def node(state: AgentState) -> AgentState:
         try:
-            file_path = str(state.get("file_path", "")).strip()
+            file_path = str(state.get("file_path") or "").strip()
             file_data = (
                 file_agent.read_file(file_path)
                 if file_path
@@ -192,6 +205,15 @@ def _route_from_planner(state: AgentState) -> str:
     if "file_agent" in state.get("agents_needed", []):
         return "file_agent"
     return "code_agent"
+
+
+def _continue_unless_error(next_node: str) -> Any:
+    """Build a router that goes to ``next_node`` unless the state is in error."""
+
+    def route(state: AgentState) -> str:
+        return "end" if state.get("status") == "error" else next_node
+
+    return route
 
 
 def _route_from_supervisor(state: AgentState) -> str:

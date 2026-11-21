@@ -2,7 +2,7 @@
 
 > Describe any task in natural language. Multiple specialized AI agents coordinate to execute it automatically — fully local, no paid APIs.
 
-![AgentFlow Demo](https://img.shields.io/badge/status-active-brightgreen) ![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react) ![LangGraph](https://img.shields.io/badge/LangGraph-0.2.50-purple) ![Ollama](https://img.shields.io/badge/Ollama-local_LLM-orange) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
+[![CI](https://github.com/Gninho-silue/agentflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Gninho-silue/agentflow/actions/workflows/ci.yml) ![AgentFlow Demo](https://img.shields.io/badge/status-active-brightgreen) ![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green) ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react) ![LangGraph](https://img.shields.io/badge/LangGraph-0.2.50-purple) ![Ollama](https://img.shields.io/badge/Ollama-local_LLM-orange) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
 
 ---
 
@@ -20,7 +20,7 @@ Planner → FileAgent → CodeAgent → Reporter → Supervisor
 | -------------- | ---------------------------------------------------------------------- |
 | **Planner**    | Decomposes the task into subtasks and assigns them to the right agents |
 | **FileAgent**  | Reads and parses uploaded files (CSV, JSON, TXT)                       |
-| **CodeAgent**  | Generates and executes Python code in a sandboxed environment          |
+| **CodeAgent**  | Generates and executes Python code (restricted, not yet isolated)      |
 | **Reporter**   | Aggregates all outputs into a clean Markdown report                    |
 | **Supervisor** | Monitors workflow state, handles errors, decides completion            |
 
@@ -76,10 +76,9 @@ docker-compose up --build
 ### 4. Or run locally
 
 ```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+# Backend (from the repository root)
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --port 8000
 
 # Frontend (new terminal)
 cd frontend
@@ -88,6 +87,27 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173)
+
+---
+
+## 🧪 Tests
+
+Tests never call a real LLM: the agents are driven by a scripted fake model
+(`FakeListChatModel`), so they run offline and without Ollama.
+
+```bash
+# Backend: planner parsing, LangGraph routing, HTTP API, WebSocket
+pip install -r backend/requirements-dev.txt
+pytest
+
+# Frontend: lint, typecheck, unit tests (Vitest + Testing Library)
+cd frontend
+npm run lint
+npm run typecheck
+npm test
+```
+
+GitHub Actions runs both suites (plus the frontend build) on every push and pull request.
 
 ---
 

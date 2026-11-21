@@ -122,6 +122,8 @@ const markdownComponents: Components = {
   pre({ children }) {
     return <>{children}</>;
   },
+  // TODO(step 5): type this renderer; react-markdown v9 no longer passes `inline`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   code({ inline, children, ...props }: any) {
     if (inline) {
       return (

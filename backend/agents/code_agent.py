@@ -202,7 +202,9 @@ Write ONLY the Python code, no explanation, no markdown backticks.
     def _prepare_chart_code(self, code: str) -> str:
         """Let chart_generator inject the real uploads save path."""
 
-        return re.sub(r"plt\.savefig\s*\([^\n]*\)", "# plt.savefig handled by AgentFlow", code)
+        # The comment must not contain "plt.savefig", otherwise chart_generator
+        # thinks the code already saves the figure and never injects the real call.
+        return re.sub(r"plt\.savefig\s*\([^\n]*\)", "# figure saving handled by AgentFlow", code)
 
     def _fallback_chart_code(self, file_data: dict[str, Any] | None) -> str:
         """Generate a minimal matplotlib chart when the LLM ignores chart instructions."""

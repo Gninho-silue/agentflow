@@ -124,5 +124,7 @@ def _safe_import(
     if name == "matplotlib":
         return matplotlib
     if name == "matplotlib.pyplot":
-        return plt
+        # `import matplotlib.pyplot as plt` asks for the top-level package
+        # (empty fromlist) and then reads its `.pyplot` attribute.
+        return plt if fromlist else matplotlib
     raise ImportError(f"Import of '{name}' is not allowed in chart generation.")
