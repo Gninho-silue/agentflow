@@ -7,6 +7,7 @@ import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.api.routes import TASK_EVENTS, get_task_response
+from backend.observability import logger, task_context
 
 
 router = APIRouter()
@@ -46,7 +47,8 @@ async def task_websocket(websocket: WebSocket, task_id: str) -> None:
     except WebSocketDisconnect:
         return
     except Exception as exc:
-        print(f"[WebSocket] Unhandled error for task {task_id}: {exc}")
+        with task_context(task_id):
+            logger.exception("WebSocket stream failed: %s", exc)
         try:
             await websocket.send_json({"type": "error", "message": "Workflow failed."})
             await websocket.close()

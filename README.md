@@ -166,6 +166,40 @@ Tunable with environment variables: `SANDBOX_TIMEOUT_SECONDS` (5),
 
 ---
 
+## 📈 Observability
+
+No external service is needed: logs go to stdout and metrics are exposed for Prometheus.
+
+**Structured logs.** One JSON object per line, with a `task_id` and a `request_id` on
+every line, so a whole run can be followed with one filter:
+
+```json
+{"timestamp": "2026-11-21T13:22:35.645Z", "level": "info", "logger": "agentflow", "message": "Code attempt 1/3 failed: division by zero", "task_id": "4342f12f-…", "request_id": "a9a6cfdf…", "agent": "code_agent", "attempt": 1, "error_type": "ZeroDivisionError"}
+```
+
+`LOG_FORMAT=text` switches to readable lines for local development; `LOG_LEVEL`
+sets the level (default `INFO`). Every response carries an `X-Request-ID` header
+(the client's own value is kept when it is safe).
+
+**Metrics** on `GET /metrics` (Prometheus text format; set `METRICS_TOKEN` to require
+`Authorization: Bearer <token>`):
+
+| Metric | What it tells you |
+| --- | --- |
+| `agentflow_tasks_total{status}` | Completed vs. failed tasks |
+| `agentflow_task_duration_seconds` | End-to-end task duration |
+| `agentflow_agent_duration_seconds{agent}` | Where the time goes, per agent |
+| `agentflow_llm_requests_total{provider,model,outcome}` / `agentflow_llm_latency_seconds` | LLM errors and latency |
+| `agentflow_code_attempts_total{outcome}` | How often the CodeAgent needs to self-correct |
+| `agentflow_sandbox_runs_total{outcome}` / `agentflow_sandbox_duration_seconds` | Sandbox errors and timeouts |
+| `agentflow_http_requests_total{method,route,status}` / `agentflow_http_request_duration_seconds` | API traffic, by route template |
+
+**Health checks.** `GET /health` is a fast liveness probe (used by Docker and the
+host). `GET /health/ready` checks the database, the LLM and free disk space, and
+answers `503` with the failing check when something is missing.
+
+---
+
 ## 📋 Usage
 
 1. **Describe your task** in the text area (e.g. _"Analyze this CSV, calculate revenue by category, identify top 5 products"_)

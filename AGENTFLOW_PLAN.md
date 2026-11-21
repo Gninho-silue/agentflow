@@ -114,6 +114,20 @@
   - Captures avant/après : `docs/screenshots/` (before-desktop-empty, before-desktop-result, before-mobile ; after-desktop-empty, after-desktop-result, after-desktop-llm-unavailable, after-mobile).
   - Restes : bundle JS 557 kB (coloration Prism) ; l'import dynamique est possible mais demande d'adapter les tests du ResultViewer.
 
+## Étape 6b — Observabilité (logs + métriques, sans service externe)
+- [x] Logs JSON structurés (`LOG_FORMAT=json|text`, `LOG_LEVEL`) avec `task_id` et `request_id` sur chaque ligne ; plus de `print()` dans le backend.
+- [x] En-tête `X-Request-ID` (repris s'il est fourni, sinon généré) renvoyé dans chaque réponse.
+- [x] Métriques Prometheus sur `/metrics` (protégé par `METRICS_TOKEN` s'il est défini) : requêtes HTTP, tâches par statut, durée des tâches et de chaque agent, appels LLM (latence, erreurs), tentatives du CodeAgent, exécutions du sandbox (ok / erreur / timeout).
+- [x] `/health/ready` : base de données, LLM, espace disque ; `/health` reste un simple test de vie (rapide, pour Render).
+- [x] Tests (TDD) ; README section « Observability ».
+- [x] Commit : `feat(observability): structured logs and Prometheus metrics` → push.
+- Bilan : 17 tests (TDD), 118 tests backend au total. Vérifié sur une vraie exécution (logs JSON ci-dessus dans le README).
+  - `backend/observability.py` : formateur JSON, `task_context`, fabrique de `LogRecord` qui ajoute `task_id`/`request_id` (marche aussi avec `caplog`), métriques Prometheus, callback LangChain pour la latence et les erreurs LLM (branché dans `create_workflow`, donc aussi sur les modèles injectés).
+  - Plus aucun `print()` dans le backend (test dédié ; seul l'enfant du sandbox est exclu).
+  - Labels HTTP = gabarit de route (`/api/tasks/{task_id}/status`), jamais l'URL brute, pour ne pas exploser la cardinalité.
+  - `/health` reste minimal (Render) ; `/health/ready` renvoie 503 + le détail du contrôle en échec.
+  - Pour le déploiement : définir `METRICS_TOKEN` sur Render pour ne pas exposer `/metrics` publiquement.
+
 ## Étape 7 — Déploiement
 - [ ] **Backend sur Render** (Docker, WebSockets supportés, offre gratuite qui se met en veille) avec `LLM_PROVIDER=groq`. **Frontend sur Vercel.**
 - [ ] CORS limité au domaine Vercel ; URL du backend en variable d'environnement côté frontend.

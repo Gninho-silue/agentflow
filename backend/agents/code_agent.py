@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.llm import get_llm
 
+from backend.observability import CODE_ATTEMPTS, logger
 from backend.sandbox import SandboxResult
 from backend.tools.code_executor import CodeExecutor
 
@@ -73,11 +74,12 @@ class CodeAgent:
                 if self._is_safe_code(code):
                     outcome = self.executor.run(code, file_data, input_files=input_files)
                 else:
-                    print("[CodeAgent] Blocked: generated code contains unsafe patterns.")
+                    logger.warning("Generated code blocked by the safety pre-filter", extra={"agent": "code_agent", "attempt": number})
                     outcome = SandboxResult(ok=False, error=_UNSAFE_MESSAGE, error_type="UnsafeCode")
 
                 chart_path = self._save_chart(outcome.images) if (outcome.ok or needs_chart) else None
                 success = outcome.ok or bool(needs_chart and chart_path)
+                CODE_ATTEMPTS.labels("success" if success else "failure").inc()
                 attempts.append(
                     {
                         "attempt": number,
@@ -105,7 +107,13 @@ class CodeAgent:
                         "attempts": attempts,
                     }
 
-                print(f"[CodeAgent] Attempt {number}/{MAX_ATTEMPTS} failed: {outcome.error}")
+                logger.info(
+                    "Code attempt %s/%s failed: %s",
+                    number,
+                    MAX_ATTEMPTS,
+                    outcome.error,
+                    extra={"agent": "code_agent", "attempt": number, "error_type": outcome.error_type},
+                )
                 if number < MAX_ATTEMPTS:
                     code = self.fix_code(task, file_data, code, outcome)
 
@@ -119,7 +127,7 @@ class CodeAgent:
                 "attempts": attempts,
             }
         except Exception as exc:
-            print(f"[CodeAgent] Error: {exc}")
+            logger.exception("CodeAgent failed", extra={"agent": "code_agent"})
             return {
                 "code": attempts[-1]["code"] if attempts else "",
                 "output": str(exc),

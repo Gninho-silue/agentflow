@@ -19,6 +19,7 @@ from backend.database import SessionLocal, get_db
 from backend.graph.state import AgentState
 from backend.graph.workflow import workflow
 from backend.llm import check_llm
+from backend.observability import AGENT_DURATION, TASK_DURATION, TASKS, logger, task_context
 from backend.models.task import Task
 
 
@@ -194,7 +195,21 @@ def get_task_response(task_id: str) -> TaskResponse:
 
 
 def _run_workflow(task_id: str) -> None:
-    """Run LangGraph for a task and persist the final state."""
+    """Run a task with its logging context and record task-level metrics."""
+
+    with task_context(task_id):
+        started_at = time.perf_counter()
+        logger.info("Task started")
+        status = _execute_workflow(task_id)
+        elapsed = time.perf_counter() - started_at
+        TASKS.labels(status).inc()
+        TASK_DURATION.observe(elapsed)
+        log = logger.info if status == "completed" else logger.warning
+        log("Task finished: %s", status, extra={"status": status, "duration_s": round(elapsed, 3)})
+
+
+def _execute_workflow(task_id: str) -> str:
+    """Run LangGraph for a task, persist the final state and return its status."""
 
     db = SessionLocal()
     started_at = time.perf_counter()
@@ -212,7 +227,8 @@ def _run_workflow(task_id: str) -> None:
             task.updated_at = datetime.now(timezone.utc)
             db.commit()
             TASK_EVENTS.setdefault(task_id, []).append(_event("planner", message, "error"))
-            return
+            logger.warning("LLM unavailable: %s", llm_problem)
+            return "error"
 
         initial_state: AgentState = {
             "task": task.task,
@@ -242,6 +258,13 @@ def _run_workflow(task_id: str) -> None:
             duration = round(now - step_started, 3)
             step_started = now
             durations[node_name] = round(durations.get(node_name, 0.0) + duration, 3)
+            AGENT_DURATION.labels(node_name).observe(duration)
+            logger.info(
+                "Agent %s finished in %.2fs",
+                node_name,
+                duration,
+                extra={"agent": node_name, "duration_s": duration, "status": state.get("status")},
+            )
             final_state = state
             if node_name == "code_agent":
                 for attempt in state.get("code_attempts", []):
@@ -258,7 +281,9 @@ def _run_workflow(task_id: str) -> None:
         task.updated_at = datetime.now(timezone.utc)
         db.commit()
         TASK_EVENTS.setdefault(task_id, []).append(_event("supervisor", f"Workflow {task.status}.", task.status))
+        return task.status
     except Exception as exc:
+        logger.exception("Workflow crashed")
         task = db.get(Task, task_id)
         if task is not None:
             task.status = "error"
@@ -267,6 +292,7 @@ def _run_workflow(task_id: str) -> None:
             task.updated_at = datetime.now(timezone.utc)
             db.commit()
         TASK_EVENTS.setdefault(task_id, []).append(_event("supervisor", str(exc), "error"))
+        return "error"
     finally:
         db.close()
 

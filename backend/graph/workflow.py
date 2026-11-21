@@ -14,6 +14,7 @@ from backend.agents.planner import PlannerAgent
 from backend.agents.reporter import ReporterAgent
 from backend.graph.state import AgentState
 from backend.llm import get_llm
+from backend.observability import LLMMetricsCallback
 
 
 def create_workflow(llm: BaseChatModel | None = None) -> Any:
@@ -25,6 +26,9 @@ def create_workflow(llm: BaseChatModel | None = None) -> Any:
     """
 
     llm = llm or get_llm()
+    model_name = str(getattr(llm, "model", None) or getattr(llm, "model_name", None) or "unknown")
+    provider = type(llm).__name__.removeprefix("Chat").lower()
+    llm = llm.with_config(callbacks=[LLMMetricsCallback(provider, model_name)])  # type: ignore[assignment]
     planner = PlannerAgent(llm=llm)
     file_agent = FileAgent()
     code_agent = CodeAgent(llm=llm)
