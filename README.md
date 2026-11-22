@@ -187,7 +187,7 @@ and disk space, reports the deployed commit, and answers `503` when something is
 ## Tests, CI and CD
 
 Tests never call a real LLM: agents are driven by scripted fake models, so the suites
-run offline. **185 backend tests** (pytest: planner parsing, LangGraph routing, API,
+run offline. **190 backend tests** (pytest: planner parsing, LangGraph routing, API,
 WebSocket, sandbox attacks, visitor isolation, self-correction, observability, deployment) and
 **54 frontend tests** (Vitest + Testing Library).
 

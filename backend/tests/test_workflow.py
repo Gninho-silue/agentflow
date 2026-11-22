@@ -190,7 +190,7 @@ def test_reporter_checks_its_claims_against_computed_facts(tmp_path: Path) -> No
     _, final = run(graph, initial_state("Average price per category", str(catalog)))
 
     assert final["status"] == "completed"
-    assert final["computed_facts"]["indicators"]["price"]["max"] == "Electronics"
+    assert final["computed_facts"]["indicators"]["price_by_category"]["max"] == "Electronics"
     assert final["fact_check"]["passed"] is False
     assert final["fact_check"]["attempts"] == 2
     assert "## ⚠️ Fact check" in final["report"]

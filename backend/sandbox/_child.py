@@ -291,19 +291,30 @@ def _extract_indicators(pd: object, printed: list[object], variables: list[tuple
             key, suffix = f"{name}_{suffix}", suffix + 1
         found[key] = clean
 
+    def by_dimension(measure: str, index: object) -> str:
+        # "revenue" grouped by "region" -> "revenue_by_region": several breakdowns of
+        # the same measure stay distinguishable.
+        dimension = getattr(index, "name", None)
+        if dimension is None or str(dimension).lower() in measure.lower():
+            return measure
+        return f"{measure}_by_{dimension}"
+
     def collect(obj: object, fallback: str, variable: bool = False) -> None:
         if isinstance(obj, pd.Series):  # type: ignore[attr-defined]
             labels = labelled(obj.index)
             if labels and pd.api.types.is_numeric_dtype(obj.dtype):  # type: ignore[attr-defined]
                 # A variable name ("avg_price") says more than the column it came from ("price").
-                name = fallback if variable or obj.name is None else str(obj.name)
+                if variable or obj.name is None:
+                    name = fallback
+                else:
+                    name = by_dimension(str(obj.name), obj.index)
                 add(name, labels, obj.values)
         elif isinstance(obj, pd.DataFrame):  # type: ignore[attr-defined]
             labels = labelled(obj.index)
             if labels:
                 for column in obj.columns:
                     if pd.api.types.is_numeric_dtype(obj[column].dtype):  # type: ignore[attr-defined]
-                        add(str(column), labels, obj[column].values)
+                        add(by_dimension(str(column), obj.index), labels, obj[column].values)
 
     for obj in printed:
         collect(obj, "value")

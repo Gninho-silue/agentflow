@@ -17,6 +17,7 @@ from collections import defaultdict
 from typing import Any
 
 _MAX_NUMBERS = 1000
+_DASHES = re.compile("[‐‑‒–—―−]")
 
 # --- Facts ----------------------------------------------------------------------
 
@@ -44,6 +45,8 @@ def build_facts(
         }
         numbers.update(clean.values())
         numbers.add(float(len(clean)))
+        for label in clean:
+            numbers.update(value for value, _, _ in extract_numbers(label))
 
     numbers.update(value for value, _, _ in extract_numbers(stdout or ""))
     data = file_data or {}
@@ -116,7 +119,10 @@ _GENERIC = {
 
 
 def _indicator_patterns(name: str) -> re.Pattern[str]:
-    tokens = [t for t in re.split(r"[_\W]+", name.lower()) if t]
+    # Only the measure identifies an indicator ("revenue" in "revenue_by_region"):
+    # the categories named in the sentence tell which breakdown it is about.
+    measure = re.split(r"_by_|_per_|_par_", name.lower(), maxsplit=1)[0]
+    tokens = [t for t in re.split(r"[_\W]+", measure) if t]
     meaningful = [t for t in tokens if t not in _GENERIC] or tokens
     return re.compile("".join(rf"(?=.*\b{re.escape(t)})" for t in meaningful), re.IGNORECASE | re.DOTALL)
 
@@ -134,6 +140,8 @@ def verify_report(report: str, facts: dict[str, Any] | None) -> list[str]:
     """Return human-readable problems; an empty list means the report is consistent."""
 
     facts = facts or {}
+    # LLMs write dates with non-breaking or typographic dashes ("2026‑06").
+    report = _DASHES.sub("-", report)
     indicators: dict[str, Any] = facts.get("indicators") or {}
     numbers: list[float] = facts.get("numbers") or []
     if not indicators and not numbers:
@@ -175,14 +183,18 @@ def verify_report(report: str, facts: dict[str, Any] | None) -> list[str]:
                 if not pattern.search(clause):
                     continue
                 data = indicators[name]
+                # "North has the highest revenue" is about revenue by region, not by category.
+                in_breakdown = [label for label in clause_labels if label in data["values"]]
+                if not in_breakdown:
+                    continue
                 expected = data[f"{direction}_all"]
-                if not set(clause_labels) & set(expected):
+                if not set(in_breakdown) & set(expected):
                     word = "highest" if direction == "max" else "lowest"
-                    for label in clause_labels:
+                    for label in in_breakdown:
                         message = f"'{label}' is not the {word} for {name}: the {word} is {', '.join(expected)}."
                         if message not in errors:
                             errors.append(message)
-                claims[(name, direction)].update(set(clause_labels) & set(expected) or clause_labels)
+                claims[(name, direction)].update(set(in_breakdown) & set(expected) or in_breakdown)
 
     for (name, direction), claimed in sorted(claims.items()):
         expected = set(indicators[name][f"{direction}_all"])

@@ -117,3 +117,66 @@ def test_grouping_words_in_variable_names_do_not_hide_claims() -> None:
     assert verify_report("Highest total stock: Sports (432.0).", facts) == []
     errors = verify_report("Highest total stock: Home (413.0).", facts)
     assert "'Home' is not the highest for stock_by_cat: the highest is Sports." in errors
+
+
+# --- Several breakdowns of the same measure (Monthly sales example) -----------
+
+SALES_FACTS = build_facts(
+    {
+        "revenue_by_region": {"North": 157250.0, "South": 81319.0},
+        "revenue_by_category": {"Electronics": 161583.0, "Home": 76986.0},
+        "revenue_by_month": {"2026-01": 87295.0, "2026-02": 93444.0, "2026-06": 119499.0},
+    }
+)
+
+
+def test_superlatives_are_checked_against_the_breakdown_of_their_categories() -> None:
+    report = (
+        "North has the highest revenue (157,250) and South the lowest (81,319).\n"
+        "Electronics generates the highest revenue (161,583).\n"
+        "2026-06 had the highest revenue (119,499), while 2026-01 had the lowest.\n"
+    )
+    assert verify_report(report, SALES_FACTS) == []
+
+
+def test_a_wrong_claim_is_still_caught_within_its_breakdown() -> None:
+    errors = verify_report("South has the highest revenue.", SALES_FACTS)
+    assert errors == ["'South' is not the highest for revenue_by_region: the highest is North."]
+
+
+# The exact Monthly sales report that produced a false warning in production.
+SALES_RUN = build_facts(
+    {
+        "revenue_by_region": {"North": 341102.0, "South": 277092.0},
+        "revenue_by_category": {"Electronics": 458068.0, "Home": 160126.0},
+        "revenue_by_month": {
+            "2026-01": 87295.0, "2026-02": 93444.0, "2026-03": 98302.0,
+            "2026-04": 104105.0, "2026-05": 115549.0, "2026-06": 119499.0,
+        },
+    },
+    "",
+    {"row_count": 24, "columns": ["month", "region", "category", "units", "revenue"]},
+)
+SALES_REPORT = """Summary
+The dataset contains monthly sales for two regions (North, South) and two product categories (Electronics, Home) from January to June 2026. Total revenue is highest in the North region and for Electronics, while the South region and Home category generate the lowest revenue. Monthly revenue has increased steadily, reaching its peak in June.
+Data Analysis
+* Revenue per region
+   * North: 341102
+   * South: 277092
+* Month‑over‑month revenue
+   * 2026‑01: 87295
+   * 2026‑06: 119499
+Key Findings
+* The North region leads in total revenue with 341102, while the South region trails with 277092.
+* Electronics dominates sales, generating 458068, compared to 160126 from Home.
+* Revenue grew each month, peaking at 119499 in 2026‑06 and starting at 87295 in 2026‑01.
+"""
+
+
+def test_monthly_sales_report_from_production_passes() -> None:
+    assert verify_report(SALES_REPORT, SALES_RUN) == []
+
+
+def test_non_breaking_hyphens_in_dates_are_understood() -> None:
+    errors = verify_report("2026\u201101 had the highest revenue.", SALES_RUN)
+    assert errors == ["'2026-01' is not the highest for revenue_by_month: the highest is 2026-06."]

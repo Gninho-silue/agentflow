@@ -185,8 +185,8 @@ CATALOG = {
 def test_printed_group_tables_become_indicators(sandbox: SubprocessSandbox) -> None:
     result = sandbox.run("print(df.groupby('category')[['price', 'rating']].mean())", CATALOG)
     assert result.ok, result.error
-    assert result.indicators["price"] == {"Electronics": 94.0, "Home": 63.25, "Sports": 24.25}
-    assert result.indicators["rating"]["Home"] == 4.375
+    assert result.indicators["price_by_category"] == {"Electronics": 94.0, "Home": 63.25, "Sports": 24.25}
+    assert result.indicators["rating_by_category"]["Home"] == 4.375
 
 
 def test_series_kept_in_variables_become_indicators(sandbox: SubprocessSandbox) -> None:
@@ -198,3 +198,18 @@ def test_series_kept_in_variables_become_indicators(sandbox: SubprocessSandbox) 
 def test_raw_rows_are_not_indicators(sandbox: SubprocessSandbox) -> None:
     result = sandbox.run("print(df)\ncheap = df[df['price'] < 50]", CATALOG)
     assert result.indicators == {}
+
+
+def test_breakdowns_of_the_same_measure_are_named_by_dimension(sandbox: SubprocessSandbox) -> None:
+    data = {
+        "columns": ["region", "category", "revenue"],
+        "rows": [
+            {"region": "North", "category": "Home", "revenue": 10.0},
+            {"region": "South", "category": "Electronics", "revenue": 30.0},
+            {"region": "North", "category": "Electronics", "revenue": 5.0},
+        ],
+    }
+    code = "print(df.groupby('region')['revenue'].sum())\nprint(df.groupby('category')['revenue'].sum())"
+    result = sandbox.run(code, data)
+    assert set(result.indicators) == {"revenue_by_region", "revenue_by_category"}
+    assert result.indicators["revenue_by_region"] == {"North": 15.0, "South": 30.0}
