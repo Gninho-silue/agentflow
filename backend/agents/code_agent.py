@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.llm import get_llm
 
+from backend.facts import build_facts
 from backend.observability import CODE_ATTEMPTS, logger
 from backend.sandbox import SandboxResult
 from backend.tools.code_executor import CodeExecutor
@@ -105,6 +106,7 @@ class CodeAgent:
                         "error": None,
                         "traceback": None,
                         "attempts": attempts,
+                        "facts": build_facts(outcome.indicators, outcome.stdout, file_data),
                     }
 
                 logger.info(

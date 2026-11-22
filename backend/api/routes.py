@@ -297,6 +297,8 @@ def _execute_workflow(task_id: str) -> str:
             "execution_order": [],
             "completed_agents": [],
             "code_attempts": [],
+            "computed_facts": None,
+            "fact_check": None,
         }
 
         final_state = initial_state
@@ -427,6 +429,8 @@ def _serialize_state(state: AgentState) -> dict[str, Any]:
         "agents_needed": state.get("agents_needed", []),
         "execution_order": state.get("execution_order", []),
         "code_attempts": state.get("code_attempts", []),
+        "computed_facts": state.get("computed_facts"),
+        "fact_check": state.get("fact_check"),
         "messages": [str(message.content) for message in state.get("messages", [])],
     }
 

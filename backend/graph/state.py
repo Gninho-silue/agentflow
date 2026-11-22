@@ -26,3 +26,6 @@ class AgentState(TypedDict):
     completed_agents: list[str]
     # One entry per CodeAgent run: attempt, code, error, traceback, output.
     code_attempts: list[dict]
+    # Facts computed by the code (backend.facts.build_facts) and the report check outcome.
+    computed_facts: dict | None
+    fact_check: dict | None

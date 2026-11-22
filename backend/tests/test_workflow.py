@@ -32,6 +32,8 @@ def initial_state(task: str, file_path: str | None = None) -> dict[str, Any]:
         "execution_order": [],
         "completed_agents": [],
         "code_attempts": [],
+        "computed_facts": None,
+        "fact_check": None,
     }
 
 
@@ -134,7 +136,7 @@ def test_three_failed_attempts_reach_the_reporter() -> None:
     [
         (PlannerAgent, "plan", ["planner"]),
         (FileAgent, "read_file", ["planner", "file_agent"]),
-        (ReporterAgent, "write_report", ["planner", "file_agent", "code_agent", "reporter"]),
+        (ReporterAgent, "write_checked_report", ["planner", "file_agent", "code_agent", "reporter"]),
     ],
 )
 def test_agent_exception_ends_workflow_in_clean_error_state(
@@ -173,3 +175,23 @@ def test_chart_request_produces_chart_file(sample_csv: Path) -> None:
     chart_rel = final["code_output"].split("[chart_path]:")[1].strip()
     assert Path(chart_rel).is_file()
     assert f'<img src="/{chart_rel}"' in final["report"]
+
+
+def test_reporter_checks_its_claims_against_computed_facts(tmp_path: Path) -> None:
+    """The bug report: 'Home has the highest average price' while Electronics is higher."""
+
+    catalog = tmp_path / "catalog.csv"
+    catalog.write_text(
+        "category,price\nElectronics,90\nElectronics,98\nHome,63.25\nSports,24.25\n", encoding="utf-8"
+    )
+    code = "print(df.groupby('category')['price'].mean())"
+    wrong = "# Summary\nHome products have the highest average price (63.25).\n"
+    graph = create_workflow(llm=fake_llm(PLAN_WITH_FILE, code, wrong, wrong))
+    _, final = run(graph, initial_state("Average price per category", str(catalog)))
+
+    assert final["status"] == "completed"
+    assert final["computed_facts"]["indicators"]["price"]["max"] == "Electronics"
+    assert final["fact_check"]["passed"] is False
+    assert final["fact_check"]["attempts"] == 2
+    assert "## ⚠️ Fact check" in final["report"]
+    assert "the highest is Electronics" in final["report"]

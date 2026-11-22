@@ -213,3 +213,7 @@ def test_check_llm_does_not_blame_the_key_for_a_403(monkeypatch: pytest.MonkeyPa
     message = llm_module.check_llm() or ""
     assert "rejected" not in message
     assert "HTTP 403" in message
+
+
+def test_ollama_runs_at_temperature_zero() -> None:
+    assert get_llm().temperature == 0

@@ -169,3 +169,32 @@ def test_charts_use_the_dark_interface_palette(sandbox: SubprocessSandbox) -> No
     image = Image.open(io.BytesIO(result.images[0])).convert("RGB")
     # Background of the report panel (#151b23), not matplotlib's default white.
     assert image.getpixel((2, 2)) == (0x15, 0x1B, 0x23)
+
+
+CATALOG = {
+    "columns": ["category", "price", "rating"],
+    "rows": [
+        {"category": "Electronics", "price": 90.0, "rating": 4.4},
+        {"category": "Electronics", "price": 98.0, "rating": 4.35},
+        {"category": "Home", "price": 63.25, "rating": 4.375},
+        {"category": "Sports", "price": 24.25, "rating": 4.325},
+    ],
+}
+
+
+def test_printed_group_tables_become_indicators(sandbox: SubprocessSandbox) -> None:
+    result = sandbox.run("print(df.groupby('category')[['price', 'rating']].mean())", CATALOG)
+    assert result.ok, result.error
+    assert result.indicators["price"] == {"Electronics": 94.0, "Home": 63.25, "Sports": 24.25}
+    assert result.indicators["rating"]["Home"] == 4.375
+
+
+def test_series_kept_in_variables_become_indicators(sandbox: SubprocessSandbox) -> None:
+    code = "avg_price = df.groupby('category')['price'].mean()\nprint('done')"
+    result = sandbox.run(code, CATALOG)
+    assert result.indicators == {"avg_price": {"Electronics": 94.0, "Home": 63.25, "Sports": 24.25}}
+
+
+def test_raw_rows_are_not_indicators(sandbox: SubprocessSandbox) -> None:
+    result = sandbox.run("print(df)\ncheap = df[df['price'] < 50]", CATALOG)
+    assert result.indicators == {}

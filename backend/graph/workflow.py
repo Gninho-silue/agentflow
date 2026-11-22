@@ -155,6 +155,7 @@ def _code_node(code_agent: CodeAgent) -> Any:
                 **state,
                 "code_output": str(result["output"]),
                 "code_attempts": attempts,
+                "computed_facts": result.get("facts"),
                 "completed_agents": _mark_completed(state, "code_agent"),
                 "current_agent": "reporter",
                 "messages": messages,
@@ -172,12 +173,13 @@ def _reporter_node(reporter: ReporterAgent) -> Any:
 
     def node(state: AgentState) -> AgentState:
         try:
-            report = reporter.write_report(state)
+            report, fact_check = reporter.write_checked_report(state)
             messages = state.get("messages", [])
             messages.append(AIMessage(content="ReporterAgent generated the final report."))
             return {
                 **state,
                 "report": report,
+                "fact_check": fact_check,
                 "completed_agents": _mark_completed(state, "reporter"),
                 "current_agent": "supervisor",
                 "messages": messages,

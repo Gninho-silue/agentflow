@@ -56,6 +56,7 @@ def get_llm() -> BaseChatModel:
 
     return ChatOllama(
         model=model,
+        temperature=0,  # reports must stick to the computed facts
         base_url=os.getenv("OLLAMA_HOST") or "http://localhost:11434",
     )
 

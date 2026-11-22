@@ -28,12 +28,29 @@ It runs **fully locally with Ollama** (no API key, no cost). The hosted demo use
 | **Planner** | Splits the task into subtasks and chooses the agents it needs |
 | **FileAgent** | Reads the uploaded CSV, JSON or TXT file into rows and a summary (skipped when there is no file) |
 | **CodeAgent** | Writes pandas / matplotlib code and runs it in an isolated sandbox; on an error it sends the code and traceback back to the LLM, up to 3 attempts |
-| **Reporter** | Writes the Markdown report with the computed results and charts, and says so when the code could not run |
+| **Reporter** | Writes the Markdown report from the computed facts only; a deterministic checker verifies its numbers and rankings, asks for one rewrite if needed, then flags what is still wrong |
 | **Supervisor** | Checks the workflow state and ends the run cleanly, including on errors |
 
 The interface streams each agent's state over a WebSocket and shows the duration
 per agent, the generated code, every self-correction attempt and the charts. Reports
 can be copied or downloaded as Markdown.
+
+### Reports are fact-checked
+
+LLMs can contradict their own tables ("Home has the highest average price" next to a
+table where Electronics is higher). So the report is checked against what the code
+actually computed:
+
+1. The sandbox extracts the **computed facts** from the pandas objects the code printed
+   or kept (per-category values), with the `max` / `min` of each indicator
+   (`backend/facts.py`).
+2. The Reporter gets them as JSON, as its only source of numbers and rankings
+   (temperature 0).
+3. A **deterministic checker** verifies that every number in the report exists in the
+   facts, that every superlative (highest, lowest, most, least, le plus élevé...) names
+   the real max / min of its indicator, and that no indicator gets contradictory claims.
+4. On a failure the Reporter rewrites once with the list of errors; if problems remain,
+   a visible **Fact check** section lists them at the end of the report.
 
 ## Architecture
 
@@ -170,7 +187,7 @@ and disk space, reports the deployed commit, and answers `503` when something is
 ## Tests, CI and CD
 
 Tests never call a real LLM: agents are driven by scripted fake models, so the suites
-run offline. **161 backend tests** (pytest: planner parsing, LangGraph routing, API,
+run offline. **184 backend tests** (pytest: planner parsing, LangGraph routing, API,
 WebSocket, sandbox attacks, visitor isolation, self-correction, observability, deployment) and
 **54 frontend tests** (Vitest + Testing Library).
 

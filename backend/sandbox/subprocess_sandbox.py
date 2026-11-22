@@ -227,4 +227,5 @@ class SubprocessSandbox:
             error_type=data.get("error_type"),
             traceback=data.get("traceback"),
             images=images,
+            indicators=data.get("indicators") if isinstance(data.get("indicators"), dict) else {},
         )

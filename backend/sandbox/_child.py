@@ -26,6 +26,8 @@ import traceback
 
 _MAX_STDOUT_CHARS = 200_000
 _MAX_FIGURES = 5
+_MAX_LABELS = 50
+_MAX_INDICATORS = 20
 _CODE_FILENAME = "<generated>"
 
 _BLOCKED_EVENT_PREFIXES = (
@@ -203,8 +205,18 @@ def _run(config: dict) -> dict:
     os.close(1)
 
     stdout = _BoundedStringIO(_MAX_STDOUT_CHARS)
+    builtins_for_code = _safe_builtins(_make_safe_import(modules, plt))
+    printed: list[object] = []
+    plain_print = builtins_for_code["print"]
+
+    def recording_print(*args: object, **kwargs: object) -> None:
+        # pandas objects shown to the user are the facts the report may rely on.
+        printed.extend(arg for arg in args if isinstance(arg, (pd.Series, pd.DataFrame)))
+        plain_print(*args, **kwargs)  # type: ignore[operator]
+
+    builtins_for_code["print"] = recording_print
     exec_globals = {
-        "__builtins__": _safe_builtins(_make_safe_import(modules, plt)),
+        "__builtins__": builtins_for_code,
         "__name__": "__agentflow__",
         "file_data": file_data,
         "df": df,
@@ -217,6 +229,7 @@ def _run(config: dict) -> dict:
         "statistics": statistics,
     }
     plt.show = lambda *args, **kwargs: None  # charts are collected below
+    provided = set(exec_globals)
 
     error: BaseException | None = None
     real_stdout = sys.stdout
@@ -234,7 +247,71 @@ def _run(config: dict) -> dict:
         result = _error_result(error)
         result["stdout"] = stdout.getvalue().strip()
         return result
-    return {"ok": True, "stdout": stdout.getvalue().strip()}
+    variables = [(name, value) for name, value in exec_globals.items() if name not in provided and not name.startswith("_")]
+    return {
+        "ok": True,
+        "stdout": stdout.getvalue().strip(),
+        "indicators": _extract_indicators(pd, printed, variables),
+    }
+
+
+def _extract_indicators(pd: object, printed: list[object], variables: list[tuple[str, object]]) -> dict:
+    """Per-category numbers the code computed: {indicator: {category: value}}.
+
+    Taken from printed Series/DataFrames, then from variables. Only objects
+    indexed by text labels count (a groupby result), not raw rows.
+    """
+
+    import math as _math
+
+    found: dict[str, dict[str, float]] = {}
+
+    def labelled(index: object) -> list[str] | None:
+        if isinstance(index, pd.MultiIndex) or not 2 <= len(index) <= _MAX_LABELS:  # type: ignore[attr-defined, arg-type]
+            return None
+        values = list(index)  # type: ignore[call-overload]
+        if not all(isinstance(value, str) for value in values):
+            return None
+        return values
+
+    def add(name: str, labels: list[str], numbers: object) -> None:
+        clean: dict[str, float] = {}
+        for label, value in zip(labels, list(numbers)):  # type: ignore[call-overload]
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                return
+            if not _math.isfinite(number):
+                return
+            clean[label] = number
+        if clean in found.values():
+            return  # same numbers already recorded (printed, then kept in a variable)
+        key, suffix = name, 2
+        while key in found:
+            key, suffix = f"{name}_{suffix}", suffix + 1
+        found[key] = clean
+
+    def collect(obj: object, fallback: str, variable: bool = False) -> None:
+        if isinstance(obj, pd.Series):  # type: ignore[attr-defined]
+            labels = labelled(obj.index)
+            if labels and pd.api.types.is_numeric_dtype(obj.dtype):  # type: ignore[attr-defined]
+                # A variable name ("avg_price") says more than the column it came from ("price").
+                name = fallback if variable or obj.name is None else str(obj.name)
+                add(name, labels, obj.values)
+        elif isinstance(obj, pd.DataFrame):  # type: ignore[attr-defined]
+            labels = labelled(obj.index)
+            if labels:
+                for column in obj.columns:
+                    if pd.api.types.is_numeric_dtype(obj[column].dtype):  # type: ignore[attr-defined]
+                        add(str(column), labels, obj[column].values)
+
+    for obj in printed:
+        collect(obj, "value")
+    for name, obj in variables:
+        collect(obj, name, variable=True)
+        if len(found) >= _MAX_INDICATORS:
+            break
+    return dict(list(found.items())[:_MAX_INDICATORS])
 
 
 def _apply_chart_style(matplotlib: object) -> None:

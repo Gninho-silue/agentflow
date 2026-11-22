@@ -23,6 +23,8 @@ class SandboxResult:
     timed_out: bool = False
     # PNG images produced by the code (open matplotlib figures or *.png files).
     images: list[bytes] = field(default_factory=list)
+    # Per-category numbers the code computed: {indicator: {category: value}}.
+    indicators: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 class Sandbox(Protocol):

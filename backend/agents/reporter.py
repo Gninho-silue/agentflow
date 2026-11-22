@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
+from backend.facts import verify_report
 from backend.llm import get_llm
 
 from backend.graph.state import AgentState
@@ -23,17 +25,55 @@ class ReporterAgent:
     def write_report(self, state: AgentState) -> str:
         """Use the LLM to write a final markdown report from AgentState."""
 
+        return self.write_checked_report(state)[0]
+
+    def write_checked_report(self, state: AgentState) -> tuple[str, dict[str, Any]]:
+        """Write the report, check it against the computed facts, fix it once if needed.
+
+        Returns the final report and the fact check outcome
+        (``passed``, ``attempts``, ``errors``). When the second draft still has
+        problems, a visible warning section lists them.
+        """
+
+        facts = state.get("computed_facts")
+        messages: list[BaseMessage] = [
+            SystemMessage(content=self._system_prompt()),
+            HumanMessage(content=self._state_prompt(state)),
+        ]
         try:
-            response = self.llm.invoke(
-                [
-                    SystemMessage(content=self._system_prompt()),
-                    HumanMessage(content=self._state_prompt(state)),
-                ]
-            )
-            report = str(response.content).strip()
-            return self._finalize(report or self._fallback_report(state), state)
+            report = str(self.llm.invoke(messages).content).strip()
         except Exception:
-            return self._finalize(self._fallback_report(state), state)
+            fallback = self._fallback_report(state)
+            return self._finalize(fallback, state), {
+                "passed": True, "attempts": 0, "errors": [], "skipped": "fallback report"
+            }
+        if not report:
+            report = self._fallback_report(state)
+
+        if not facts or not (facts.get("indicators") or facts.get("numbers")):
+            return self._finalize(report, state), {
+                "passed": True, "attempts": 1, "errors": [], "skipped": "no computed facts"
+            }
+
+        errors = verify_report(report, facts)
+        attempts = 1
+        if errors:
+            attempts = 2
+            retry = messages + [
+                AIMessage(content=report),
+                HumanMessage(content=self._correction_prompt(errors)),
+            ]
+            try:
+                second = str(self.llm.invoke(retry).content).strip()
+            except Exception:
+                second = ""
+            if second:
+                report = second
+                errors = verify_report(report, facts)
+
+        if errors:
+            report = self._with_warning(report, errors)
+        return self._finalize(report, state), {"passed": not errors, "attempts": attempts, "errors": errors}
 
     def __call__(self, state: AgentState) -> str:
         """Write a report when the agent instance is called directly."""
@@ -48,6 +88,11 @@ class ReporterAgent:
             "Write a clean markdown report with exactly these sections: "
             "Summary, Data Analysis, Key Findings, Conclusion. "
             "Be concise, factual, and base the report only on provided data. "
+            "When COMPUTED FACTS are provided, they are the only source of numbers and rankings: "
+            "use only numbers that appear in them, and use superlatives (highest, lowest, most, "
+            "least, best, worst...) only as their max and min say; on a tie (max_all or min_all "
+            "with several entries) say the categories share the first or last place. "
+            "Never infer a ranking from the order of a table. "
             "Quote the exact numbers from the code output instead of rounding them into words. "
             "Use 'majority' or 'most' only for a share strictly more than 50%; "
             "50% is 'half', and the largest group below 50% is 'the largest group' or 'a plurality'. "
@@ -72,9 +117,35 @@ class ReporterAgent:
             f"Subtasks:\n{state.get('subtasks')}\n\n"
             f"File data:\n{self._compact(state.get('file_data'))}\n\n"
             f"Code output:\n{state.get('code_output')}\n\n"
+            f"COMPUTED FACTS (JSON, the only source of numbers and rankings):\n{self._facts_json(state)}\n\n"
             f"Chart path:\n{self._chart_path(state)}\n\n"
             f"Code attempts:\n{self._attempts_summary(state)}\n\n"
             f"Error:\n{state.get('error')}"
+        )
+
+    def _facts_json(self, state: AgentState) -> str:
+        facts = state.get("computed_facts")
+        if not facts:
+            return "None"
+        return json.dumps({"indicators": facts.get("indicators", {})}, ensure_ascii=False, indent=1)
+
+    def _correction_prompt(self, errors: list[str]) -> str:
+        listed = "\n".join(f"- {error}" for error in errors)
+        return (
+            "An automatic check compared your report with the COMPUTED FACTS and found these problems:\n"
+            f"{listed}\n\n"
+            "Rewrite the whole report so that every number and every superlative matches the "
+            "COMPUTED FACTS exactly. Keep the same sections. Return only the report."
+        )
+
+    def _with_warning(self, report: str, errors: list[str]) -> str:
+        listed = "\n".join(f"- {error}" for error in errors)
+        return (
+            f"{report.rstrip()}\n\n"
+            "## ⚠️ Fact check\n\n"
+            "An automatic check found statements that do not match the computed results. "
+            "Trust the tables and numbers produced by the code over these sentences:\n\n"
+            f"{listed}"
         )
 
     def _finalize(self, report: str, state: AgentState) -> str:
