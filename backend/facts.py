@@ -110,6 +110,8 @@ _CLAUSES = re.compile(r";|\b(?:and|while|whereas|but|et|mais|tandis que|alors qu
 _GENERIC = {
     "avg", "average", "mean", "total", "sum", "count", "nb", "num", "number", "of", "per", "by",
     "the", "moyenne", "moyen", "value", "values",
+    # grouping words in variable names ("stock_by_cat", "price_per_category")
+    "cat", "category", "categories", "group", "grouped", "groups", "df", "agg", "stats", "par",
 }
 
 

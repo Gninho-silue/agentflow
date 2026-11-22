@@ -152,3 +152,9 @@
 - [x] Ne plus dire « zero API cost » sans nuance : « runs fully locally with Ollama; the hosted demo uses Groq's free tier ».
 - [x] Résumé final pour Gninho : fonctionnalités ajoutées, nombre de tests, URL de démo, textes à mettre à jour sur LinkedIn, le portfolio et le README de profil GitHub.
 - Bilan : README réécrit (démo en ligne, capture, architecture Mermaid, sécurité, observabilité, lancement local avec Ollama, tests et CI/CD, « runs fully locally with Ollama; the hosted demo uses Groq's free tier »), fichier `LICENSE` ajouté (le README annonçait MIT sans fichier). Résumé final donné à Gninho dans la conversation.
+
+## Après le plan — corrections post-déploiement
+- [x] Isolation des visiteurs (`X-Client-ID`, empreinte SHA-256 par tâche) ; `file_path` limité aux fichiers uploadés (l'API pouvait lire `/etc/passwd`). Vérifié en production.
+- [x] Graphiques au style sombre de l'interface, « Clear all » à côté du titre, consigne « majority > 50 % ».
+- [x] Vérification des rapports (TDD) : faits calculés extraits dans le sandbox (`backend/facts.py`), Reporter limité à ces faits (température 0), vérificateur déterministe (nombres, superlatifs EN/FR, contradictions), une réécriture puis avertissement « Fact check ». Rejoué en production sur l'exemple Product catalog : premier brouillon refusé, réécriture correcte, égalité Electronics/Home reconnue.
+

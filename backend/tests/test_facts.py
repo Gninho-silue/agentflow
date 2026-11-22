@@ -110,3 +110,10 @@ def test_quantifier_most_without_a_category_is_ignored() -> None:
 
 def test_no_facts_means_nothing_to_check() -> None:
     assert verify_report("Revenue was 123 456.", {"indicators": {}, "numbers": []}) == []
+
+
+def test_grouping_words_in_variable_names_do_not_hide_claims() -> None:
+    facts = build_facts({"stock_by_cat": {"Electronics": 187.0, "Home": 413.0, "Sports": 432.0}})
+    assert verify_report("Highest total stock: Sports (432.0).", facts) == []
+    errors = verify_report("Highest total stock: Home (413.0).", facts)
+    assert "'Home' is not the highest for stock_by_cat: the highest is Sports." in errors
