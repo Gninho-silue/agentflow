@@ -15,3 +15,6 @@ dist/
 .env
 .env.local
 prompt.md
+
+# Personal interview prep, never commit
+INTERVIEW_NOTES.md
